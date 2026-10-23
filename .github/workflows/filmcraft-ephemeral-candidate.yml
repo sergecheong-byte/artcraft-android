@@ -1,0 +1,149 @@
+name: FilmCraft pinned ephemeral Android candidate (non-release)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/filmcraft/**'
+      - 'assets/filmcraft/**'
+      - '.github/workflows/filmcraft-ephemeral-candidate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: filmcraft-candidate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >
+      github.repository == 'KosmosSG/artcraft-android' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'filmcraft-v0.10.0-android1-candidate'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout FilmCraft-only candidate
+        uses: actions/checkout@v5
+        with:
+          path: suite
+          persist-credentials: false
+
+      - name: Checkout reviewed Android builder at immutable reference
+        uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: filmcraft-builder
+          persist-credentials: false
+
+      - name: Verify independent builder and official FilmCraft source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C filmcraft-builder rev-parse HEAD)" = 'ac54d62d9d2d6f663295a4afd8972a7a3e79f9af'
+          mkdir -p filmcraft-builder/source
+          git clone --depth 1 --branch v0.10.0 https://github.com/storytold/filmcraft.git filmcraft-builder/source/filmcraft
+          test "$(git -C filmcraft-builder/source/filmcraft rev-parse HEAD)" = 'cdf43fd366e378da266cb6d3c94549a45244be1f'
+          grep -Fq 'version = "0.10.0"' filmcraft-builder/source/filmcraft/Cargo.toml
+          grep -Fq 'license = "MIT OR Apache-2.0"' filmcraft-builder/source/filmcraft/Cargo.toml
+          test ! -e filmcraft-builder/keys/artcraft-builder.jks
+          test ! -e filmcraft-builder/keys/.keystore-password
+          test -f suite/assets/filmcraft/fc-launcher-192.png
+          echo 'Official FilmCraft v0.10.0 and reviewed builder are pinned.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Rust 1.95 and ARM64 target
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+
+      - name: Select Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit 2>/dev/null || true)"
+          test -n "$SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install pinned Android build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install launcher icon renderer in isolated Python environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$GITHUB_WORKSPACE/.filmcraft-build-python"
+          "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+          "$GITHUB_WORKSPACE/.filmcraft-build-python/bin/python" -c 'from PIL import Image; print("Pillow PNG renderer available")'
+          echo "$GITHUB_WORKSPACE/.filmcraft-build-python/bin" >> "$GITHUB_PATH"
+
+      - name: Build temporary FilmCraft ARM64 APK with unique disposable signer
+        shell: bash
+        env:
+          FILMCRAFT_ANDROID_VERSION_NAME: 0.10.0-android.1
+          FILMCRAFT_EPHEMERAL_VERSION_CODE: '1000001'
+          ARTCRAFT_TARGET_SDK: '35'
+        run: |
+          set -euo pipefail
+          python3 suite/tools/filmcraft/adaptive_safe.py filmcraft-builder filmcraft
+          python3 suite/tools/filmcraft/stage_variant.py filmcraft-builder/lib/android_project.py
+          cd filmcraft-builder
+          bash build.sh -filmcraft -packagename=com.artcraft.filmcraft -appicon="$GITHUB_WORKSPACE/suite/assets/filmcraft/fc-launcher-192.png"
+          test -f output/filmcraft-0.10.0.apk
+          mv output/filmcraft-0.10.0.apk output/filmcraft-0.10.0-android.1.apk
+
+      - name: Verify candidate identity, signature, ARM64 payload and hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='filmcraft-builder/output/filmcraft-0.10.0-android.1.apk'
+          test -s "$APK"
+          SDK="$ANDROID_HOME"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+          APKSIGNER="$SDK/build-tools/35.0.0/apksigner"
+          test -x "$AAPT" && test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          "$AAPT" dump badging "$APK" > filmcraft-badging.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('filmcraft-badging.txt').read_text()
+          m = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text, re.M)
+          if not m or m.groups() != ('com.artcraft.filmcraft', '1000001', '0.10.0-android.1'):
+              raise SystemExit('STOP: Android package/version identity not as expected')
+          if 'application-icon-' not in text:
+              raise SystemExit('STOP: Android launcher icon was not packaged')
+          PY
+          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/.*\.so$'
+          sha256sum "$APK" | tee filmcraft-sha256.txt
+          echo '### NON-RELEASE FilmCraft ARM64 candidate (ephemeral signer)' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Android version: `0.10.0-android.1`, provisional code `1000001`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Package: `com.artcraft.filmcraft`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Official release source SHA: `cdf43fd366e378da266cb6d3c94549a45244be1f`' >> "$GITHUB_STEP_SUMMARY"
+          "$APKSIGNER" verify --print-certs "$APK" | grep 'certificate SHA-256 digest' >> "$GITHUB_STEP_SUMMARY"
+          cat filmcraft-sha256.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '**Not permanent-signed; do not release, install as an update or publish. Tablet functionality untested.**' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep verified ephemeral APK as short-lived CI artifact only
+        uses: actions/upload-artifact@v5
+        with:
+          name: filmcraft-0.10.0-android.1-EPHEMERAL-NOT-FOR-RELEASE
+          path: filmcraft-builder/output/filmcraft-0.10.0-android.1.apk
+          if-no-files-found: error
+          retention-days: 7
