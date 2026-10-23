@@ -1,0 +1,162 @@
+name: DeckCraft manually approved production release (never automatic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      signed_run_id:
+        description: "Successful DeckCraft permanently signed review workflow run ID"
+        type: string
+        required: true
+      approved_sha256:
+        description: "64-character SHA256 of the tested signed DeckCraft APK"
+        type: string
+        required: true
+      signing_backup_saved_offline:
+        description: "I downloaded the encrypted permanent-key backup and saved its password separately"
+        type: boolean
+        required: true
+        default: false
+      tablet_tests_passed:
+        description: "I installed and tested presentations, export, fonts and file access on HONOR MagicPad 4"
+        type: boolean
+        required: true
+        default: false
+      enhancements_reviewed:
+        description: "I checked the release notes and accepted all documented Android feature limitations"
+        type: boolean
+        required: true
+        default: false
+      publish_now:
+        description: "Publish the verified signed DeckCraft release on GitHub now"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: deckcraft-manual-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ inputs.signing_backup_saved_offline && inputs.tablet_tests_passed && inputs.enhancements_reviewed && inputs.publish_now }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Verify manual authorization and repository state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.signed_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "KosmosSG/artcraft-android" && "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Publish only from suite main"; exit 1; }
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::Invalid signed run ID"; exit 1; }
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+          printf '%s' "$run_json" | python3 -c '
+          import json,sys
+          r=json.load(sys.stdin)
+          assert r["status"]=="completed" and r["conclusion"]=="success", "Signed workflow was not successful"
+          assert r["name"]=="DeckCraft permanently signed ARM64 review APK (no auto-publish)", "Incorrect workflow"
+          assert r["head_branch"]=="review/deckcraft-v0.9.0-android1-20261022", "Unapproved source branch"
+          print("Authorized signed build:",r["id"],r["head_sha"])
+          '
+          source_sha="$(printf '%s' "$run_json" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head_sha"])')"
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
+          tag="deckcraft-v0.9.0-android.1"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::DeckCraft release already exists; never replace existing signed assets"; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::DeckCraft tag already exists; refusing to overwrite"; exit 1
+          fi
+
+      - name: Download only verified DeckCraft signed build artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.signed_run_id }}
+          EXPECTED_SHA: ${{ inputs.approved_sha256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "::error::APK SHA must be 64 hexadecimal characters"; exit 1; }
+          mkdir -p stage
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name DeckCraft-v0.9.0-arm64-signed-review --dir stage
+          apk=stage/DeckCraft-v0.9.0-arm64-release.apk
+          test -s "$apk"
+          actual="$(sha256sum "$apk" | awk '{print $1}')"
+          [[ "$actual" == "${EXPECTED_SHA,,}" ]] || { echo "::error::APK differs from the exact tablet-tested file"; exit 1; }
+          grep -F "$actual" stage/SHA256SUMS.txt >/dev/null || { echo "::error::Build checksum mismatch"; exit 1; }
+          test -s stage/DeckCraft-signing-certificate-sha256.txt
+          [[ "$(cat stage/DeckCraft-signing-certificate-sha256.txt)" =~ ^[a-f0-9]{64}$ ]] || { echo "::error::Missing release-signing identity"; exit 1; }
+
+      - name: Reverify signature, Android identity, ABI, version and release contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          apksigner="$(find "$sdk/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          aapt="$(find "$sdk/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          test -x "$apksigner" && test -x "$aapt"
+          apk=stage/DeckCraft-v0.9.0-arm64-release.apk
+          "$apksigner" verify --verbose --print-certs "$apk"
+          cert="$("$apksigner" verify --print-certs "$apk" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')"
+          [[ "$cert" == "$(cat stage/DeckCraft-signing-certificate-sha256.txt)" ]] || { echo "::error::APK signer doesn't match approved DeckCraft key"; exit 1; }
+          manifest="$("$aapt" dump badging "$apk")"
+          [[ "$manifest" == *"name='com.artcraft.deckcraft'"* ]] || exit 1
+          [[ "$manifest" == *"versionCode='100000001'"* ]] || exit 1
+          [[ "$manifest" == *"versionName='0.9.0-android.1'"* ]] || exit 1
+          python3 - "$apk" <<'PY'
+          import sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              n=z.namelist()
+              libs=[x for x in n if x.startswith("lib/") and x.endswith(".so")]
+              assert libs and all(x.startswith("lib/arm64-v8a/") for x in libs)
+              assert "classes.dex" in n and z.testzip() is None
+          print("Approved exact APK and architecture verified")
+          PY
+
+      - name: Publish DeckCraft-specific GitHub Release without modifying suite-wide latest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="deckcraft-v0.9.0-android.1"
+          test -s stage/DeckCraft-v0.9.0-arm64-release.apk
+          cat > stage/RELEASE-NOTES.md <<EOF
+          DeckCraft Android ARM64 (HONOR MagicPad 4 / Android MagicOS 10)
+          
+          Official DeckCraft stable source: storytold/deckcraft v0.9.0 at fe510bdac68118f2c9a714e69d0ff572e3f9a0c7.
+          Builder baseline: MostafaXS1/artcraft-android at ac54d62d9d2d6f663295a4afd8972a7a3e79f9af.
+          Reviewed suite source commit: ${SOURCE_SHA}.
+          APK: DeckCraft-v0.9.0-arm64-release.apk
+          Android package: com.artcraft.deckcraft.
+          Android versionName: 0.9.0-android.1; versionCode: 100000001.
+          
+          This APK was signed using the dedicated permanently backed-up DeckCraft signing identity and checked for package, ARM64 native libraries, Java bridge, APK signature and SHA256.
+          
+          User confirmed on-device tests and reviewed all Android limitations before explicitly running this manual workflow. Desktop DeckCraft supports PPTX and slideshows; individual Android integrations may still differ. No Google Play publication and no unattended updater/sync are enabled.
+          EOF
+          gh release create "$tag" \
+            stage/DeckCraft-v0.9.0-arm64-release.apk \
+            stage/SHA256SUMS.txt \
+            stage/DeckCraft-signing-certificate-sha256.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title "DeckCraft Android v0.9.0-android.1 (ARM64)" \
+            --notes-file stage/RELEASE-NOTES.md --latest=false
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets > stage/published.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("stage/published.json").read_text())
+          assets={x["name"]:x for x in r["assets"]}
+          assert "DeckCraft-v0.9.0-arm64-release.apk" in assets
+          assert assets["DeckCraft-v0.9.0-arm64-release.apk"]["size"]>0
+          print("Published:",r["url"])
+          print("APK:",assets["DeckCraft-v0.9.0-arm64-release.apk"]["url"])
+          PY

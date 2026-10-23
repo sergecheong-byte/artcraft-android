@@ -1,0 +1,54 @@
+name: DeckCraft permanent signing preflight (manual; no APK or release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_certificate_sha256:
+        description: "Expected existing DeckCraft signing certificate SHA-256 (64 hex characters, no colons)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check dedicated DeckCraft secrets are present
+        env:
+          KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for v in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [[ -z "${!v}" ]]; then echo "::error::Required DeckCraft secret $v is missing"; exit 1; fi
+          done
+          echo "Four dedicated signing secrets are configured (values not displayed)."
+
+      - name: Confirm existing keystore matches expected certificate
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+          DECKCRAFT_KEYSTORE_PASSWORD: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          DECKCRAFT_KEY_ALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+          DECKCRAFT_KEY_PASSWORD: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+          EXPECTED_CERT: ${{ inputs.expected_certificate_sha256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          keyfile="$(mktemp)"
+          certfile="$(mktemp)"
+          trap 'rm -f "$keyfile" "$certfile"' EXIT
+          [[ "$EXPECTED_CERT" =~ ^[a-fA-F0-9]{64}$ ]] || { echo "::error::Expected fingerprint must be 64 hexadecimal characters"; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$keyfile"
+          test -s "$keyfile"
+          keytool -exportcert -rfc -keystore "$keyfile" -alias "$DECKCRAFT_KEY_ALIAS" -storepass:env DECKCRAFT_KEYSTORE_PASSWORD > "$certfile"
+          actual="$(openssl x509 -in "$certfile" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          expected="$(printf '%s' "$EXPECTED_CERT" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$actual" != "$expected" ]]; then echo "::error::DeckCraft signing certificate DOES NOT match the approved identity"; exit 1; fi
+          echo "PASS: DeckCraft keystore certificate matches the explicitly approved SHA-256."
+          echo "No APK built, secrets exported, tag created, or release published."

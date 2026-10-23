@@ -1,0 +1,275 @@
+name: DeckCraft permanently signed ARM64 review APK (no auto-publish)
+
+on:
+  pull_request:
+    paths:
+      - "deckcraft/android/**"
+      - ".github/workflows/deckcraft-signed-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deckcraft-signed-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signed-review:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'review/deckcraft-v0.9.0-android1-20261022')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      DECKCRAFT_UPSTREAM_COMMIT: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
+      DECKCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      DECKCRAFT_VERSION_NAME: 0.9.0-android.1
+      DECKCRAFT_CANDIDATE_VERSION_CODE: "100000001"
+      DECKCRAFT_PACKAGE: com.artcraft.deckcraft
+
+    steps:
+      - name: Checkout DeckCraft-only candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned reference builder
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+
+      - name: Checkout pinned stable DeckCraft
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: storytold/deckcraft
+          ref: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
+          path: builder/source/deckcraft
+          persist-credentials: false
+
+      - name: Confirm stable tag, exact commits, isolated input and icon digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$DECKCRAFT_BUILDER_COMMIT"
+          test "$(git -C builder/source/deckcraft rev-parse HEAD)" = "$DECKCRAFT_UPSTREAM_COMMIT"
+          test -z "$(git -C builder/source/deckcraft status --porcelain)"
+          tag_commit="$(git ls-remote https://github.com/storytold/deckcraft.git refs/tags/v0.9.0 | awk '{print $1}')"
+          test "$tag_commit" = "$DECKCRAFT_UPSTREAM_COMMIT"
+          base64 --decode deckcraft/android/icon/deckcraft-approved-192.webp.b64 > deckcraft/android/icon/deckcraft-approved-192.webp
+          echo 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61  deckcraft/android/icon/deckcraft-approved-192.webp' | sha256sum --check
+
+      - name: Set up Java, Rust and Android build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
+          # GitHub's Ubuntu image may have SDK command-line tools installed but not on PATH.
+          # Look only under the runner's Android SDK; do not download unverified installers.
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root" || { echo "::error::Android SDK root not found"; exit 1; }
+          sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_bin" ]]; then
+            sdkmanager_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          if [[ ! -x "$sdkmanager_bin" && -x "$sdk_root/tools/bin/sdkmanager" ]]; then
+            sdkmanager_bin="$sdk_root/tools/bin/sdkmanager"
+          fi
+          test -x "$sdkmanager_bin" || { echo "::error::Android SDK command-line tools missing: install them in a reviewed follow-up"; exit 1; }
+          "$sdkmanager_bin" --sdk_root="$sdk_root" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          python3 -m venv /tmp/deckcraft-icon-env
+          /tmp/deckcraft-icon-env/bin/pip install "Pillow==11.3.0"
+          echo "/tmp/deckcraft-icon-env/bin" >> "$GITHUB_PATH"
+
+      - name: Convert uploaded Dk derivative into builder icon PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import hashlib
+          src = Path('deckcraft/android/icon/deckcraft-approved-192.webp')
+          assert hashlib.sha256(src.read_bytes()).hexdigest() == 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61'
+          with Image.open(src) as artwork:
+              assert artwork.size == (192, 192) and artwork.format == 'WEBP'
+              artwork.convert('RGBA').save(src.with_suffix('.png'), optimize=True)
+          print('Converted user-approved Dk art for builder density/adaptive generation')
+          PY
+
+      - name: Normalize Dk icon black surround for Android launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/normalize_deckcraft_icon.py deckcraft/android/icon/deckcraft-approved-192.png
+
+      - name: Apply isolated Android-only candidate version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          # These changes are confined to ephemeral checkouts, never upstream or suite main.
+          source = Path('builder/source/deckcraft/Cargo.toml')
+          s = source.read_text()
+          old = 'version = "0.9.0"'
+          assert s.count(old) == 1, 'Review new upstream manifest before changing version'
+          source.write_text(s.replace(old, 'version = "0.9.0-android.1"', 1))
+          project = Path('builder/lib/android_project.py')
+          p = project.read_text()
+          formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
+          assert p.count(formula) == 1, 'Version-code override location changed: stop'
+          project.write_text(p.replace(formula, 'return 100000001', 1))
+          print('Candidate metadata set: 0.9.0-android.1 / 100000001')
+          PY
+          git -C builder/source/deckcraft diff -- Cargo.toml
+          git -C builder diff -- lib/android_project.py
+
+      - name: Apply DeckCraft-only individual-font import (session scope)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/patch_deckcraft_fonts.py builder/source/deckcraft
+          git -C builder/source/deckcraft diff --check
+          git -C builder/source/deckcraft diff --stat
+          # Require the patch to stay confined to the reviewed DeckCraft UI files and version metadata.
+          python3 - <<'PY'
+          import subprocess
+          changed = set(subprocess.check_output(
+              ['git', '-C', 'builder/source/deckcraft', 'diff', '--name-only'], text=True
+          ).splitlines())
+          expected = {'Cargo.toml', 'crates/ui-egui/src/lib.rs', 'crates/ui-egui/src/menus.rs'}
+          assert changed == expected, f'Unexpected source changes: {changed ^ expected}'
+          print('DeckCraft-only patch scope verified:', sorted(changed))
+          PY
+
+
+      - name: Verify dedicated DeckCraft permanent signing identity against original encrypted backup
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.DECKCRAFT_KEYSTORE_BASE64 }}
+          DECKCRAFT_KEYSTORE_PASSWORD: ${{ secrets.DECKCRAFT_KEYSTORE_PASSWORD }}
+          DECKCRAFT_KEY_ALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+          DECKCRAFT_KEY_PASSWORD: ${{ secrets.DECKCRAFT_KEY_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for var in KEYSTORE_B64 DECKCRAFT_KEYSTORE_PASSWORD DECKCRAFT_KEY_ALIAS DECKCRAFT_KEY_PASSWORD; do
+            test -n "${!var}" || { echo "::error::Missing DeckCraft signing secret: $var"; exit 1; }
+          done
+          case "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}" in
+            review/deckcraft-v0.9.0-android1-20261022) ;;
+            *) echo "::error::Wrong signing branch"; exit 1 ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/deckcraft-expected" builder/keys
+          gh run download 39822965531 --repo "$GITHUB_REPOSITORY" --name deckcraft-encrypted-signing-backup --dir "$RUNNER_TEMP/deckcraft-expected"
+          backup_fingerprint="$RUNNER_TEMP/deckcraft-expected/certificate-sha256.txt"
+          test -s "$backup_fingerprint" || { echo "::error::Original signing backup fingerprint missing"; exit 1; }
+          expected="$(sed -n 's/.*=\([0-9A-Fa-f:]\{59,95\}\).*/\1/p' "$backup_fingerprint" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$expected" =~ ^[a-f0-9]{64}$ ]] || { echo "::error::Invalid backup fingerprint"; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > builder/keys/deckcraft-release.p12
+          test -s builder/keys/deckcraft-release.p12
+          printf '%s' "$DECKCRAFT_KEYSTORE_PASSWORD" > builder/keys/.deckcraft-keystore-password
+          keytool -exportcert -rfc -storetype PKCS12 -keystore builder/keys/deckcraft-release.p12 -storepass:env DECKCRAFT_KEYSTORE_PASSWORD -alias "$DECKCRAFT_KEY_ALIAS" > "$RUNNER_TEMP/deckcraft-release-cert.pem"
+          actual="$(openssl x509 -in "$RUNNER_TEMP/deckcraft-release-cert.pem" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          [[ "$actual" == "$expected" ]] || { echo "::error::Signing key is NOT the original DeckCraft identity"; exit 1; }
+          printf '%s\n' "$actual" > "$RUNNER_TEMP/deckcraft-release-cert-sha256.txt"
+          echo "PASS: permanent DeckCraft signing certificate matches original encrypted backup"
+          echo "Certificate SHA256: $actual"
+
+      - name: Bind disposable builder to the verified permanent key (DeckCraft only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("builder/lib/build-common.sh")
+          s=p.read_text()
+          for old,new in (
+              ('KEY="keys/artcraft-builder.jks"', 'KEY="keys/deckcraft-release.p12"'),
+              ('KEY_PASSWORD_FILE="keys/.keystore-password"', 'KEY_PASSWORD_FILE="keys/.deckcraft-keystore-password"'),
+              ('ARTCRAFT_KEY_ALIAS="artcraftbuilder"', 'ARTCRAFT_KEY_ALIAS="$DECKCRAFT_KEY_ALIAS"'),
+          ):
+              assert s.count(old)==1, f'Pinned builder changed ({old}); refusing signing'
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          print("Disposable DeckCraft builder configured for the existing approved PKCS12 key")
+          PY
+
+      - name: Build permanently signed DeckCraft ARM64 APK
+        shell: bash
+        timeout-minutes: 60
+        env:
+          CARGO_BUILD_JOBS: "2"
+          DECKCRAFT_KEY_ALIAS: ${{ secrets.DECKCRAFT_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/adaptive_safe.py builder deckcraft
+          cd builder
+          bash build.sh -deckcraft -appicon="$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png"
+          test -s output/deckcraft-0.9.0-android.1.apk
+
+      - name: Verify package, version, ARM64, certificate, resources and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=builder/output/deckcraft-0.9.0-android.1.apk
+          aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          badging="$("$aapt2" dump badging "$apk")"
+          [[ "$badging" == *"name='com.artcraft.deckcraft'"* ]] || { echo "::error::Package mismatch"; exit 1; }
+          [[ "$badging" == *"versionCode='100000001'"* ]] || { echo "::error::Version code mismatch"; exit 1; }
+          [[ "$badging" == *"versionName='0.9.0-android.1'"* ]] || { echo "::error::Version name mismatch"; exit 1; }
+          signed_cert="$("$apksigner" verify --print-certs "$apk" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')"
+          expected_cert="$(cat "$RUNNER_TEMP/deckcraft-release-cert-sha256.txt")"
+          [[ "$signed_cert" == "$expected_cert" ]] || { echo "::error::APK certificate does not match original signing backup"; exit 1; }
+          python3 - "$apk" "$aapt2" <<'PY'
+          import subprocess,sys,zipfile
+          apk,aapt2=sys.argv[1:]
+          with zipfile.ZipFile(apk) as z:
+              names=z.namelist()
+              libs=[n for n in names if n.startswith("lib/") and n.endswith(".so")]
+              assert libs and all(n.startswith("lib/arm64-v8a/") for n in libs),libs
+              assert "classes.dex" in names,"Java bridge missing"
+              assert z.testzip() is None,"Corrupt APK member"
+          resources=subprocess.check_output([aapt2,"dump","resources",apk],text=True)
+          for key in ("mipmap/ic_launcher","drawable/ic_launcher_foreground","drawable/ic_launcher_background"):
+              assert key in resources, key
+          print("PASS: arm64-v8a native libraries, Java DEX, intact ZIP, adaptive resources")
+          PY
+          mkdir -p dist
+          cp "$apk" dist/DeckCraft-v0.9.0-arm64-release.apk
+          (cd dist && sha256sum DeckCraft-v0.9.0-arm64-release.apk > SHA256SUMS.txt)
+          printf '%s\n' "$expected_cert" > dist/DeckCraft-signing-certificate-sha256.txt
+          echo "Upstream: storytold/deckcraft@fe510bdac68118f2c9a714e69d0ff572e3f9a0c7" > dist/BUILD-STATUS.txt
+          echo "Builder: MostafaXS1/artcraft-android@ac54d62d9d2d6f663295a4afd8972a7a3e79f9af" >> dist/BUILD-STATUS.txt
+          echo "Package: com.artcraft.deckcraft; versionName: 0.9.0-android.1; versionCode: 100000001" >> dist/BUILD-STATUS.txt
+          echo "Signed review APK only. No public release. Device test not performed." >> dist/BUILD-STATUS.txt
+          echo "### DeckCraft signed review APK (NOT PUBLICLY RELEASED)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Package, ABI, versionCode, signing certificate and archive verified; on-tablet validation remains mandatory." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload permanently signed APK as private CI artifact (no GitHub Release)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: DeckCraft-v0.9.0-arm64-signed-review
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Erase signing key material from runner
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys "$RUNNER_TEMP/deckcraft-expected"
+          rm -f "$RUNNER_TEMP/deckcraft-release-cert.pem" "$RUNNER_TEMP/deckcraft-release-cert-sha256.txt"
+          echo "Private signing material removed. No release or tag created."

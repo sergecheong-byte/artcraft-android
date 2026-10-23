@@ -1,0 +1,228 @@
+name: DeckCraft ARM64 candidate (ephemeral; never publish)
+
+on:
+  pull_request:
+    paths:
+      - "deckcraft/android/**"
+      - ".github/workflows/deckcraft-candidate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deckcraft-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-candidate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      DECKCRAFT_UPSTREAM_COMMIT: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
+      DECKCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      DECKCRAFT_VERSION_NAME: 0.9.0-android.1
+      DECKCRAFT_CANDIDATE_VERSION_CODE: "100000001"
+      DECKCRAFT_PACKAGE: com.artcraft.deckcraft
+
+    steps:
+      - name: Checkout DeckCraft-only candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Checkout pinned reference builder
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+
+      - name: Checkout pinned stable DeckCraft
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: storytold/deckcraft
+          ref: fe510bdac68118f2c9a714e69d0ff572e3f9a0c7
+          path: builder/source/deckcraft
+          persist-credentials: false
+
+      - name: Confirm stable tag, exact commits, isolated input and icon digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = "$DECKCRAFT_BUILDER_COMMIT"
+          test "$(git -C builder/source/deckcraft rev-parse HEAD)" = "$DECKCRAFT_UPSTREAM_COMMIT"
+          test -z "$(git -C builder/source/deckcraft status --porcelain)"
+          tag_commit="$(git ls-remote https://github.com/storytold/deckcraft.git refs/tags/v0.9.0 | awk '{print $1}')"
+          test "$tag_commit" = "$DECKCRAFT_UPSTREAM_COMMIT"
+          base64 --decode deckcraft/android/icon/deckcraft-approved-192.webp.b64 > deckcraft/android/icon/deckcraft-approved-192.webp
+          echo 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61  deckcraft/android/icon/deckcraft-approved-192.webp' | sha256sum --check
+
+      - name: Set up Java, Rust and Android build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
+          # GitHub's Ubuntu image may have SDK command-line tools installed but not on PATH.
+          # Look only under the runner's Android SDK; do not download unverified installers.
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk_root" || { echo "::error::Android SDK root not found"; exit 1; }
+          sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager_bin" ]]; then
+            sdkmanager_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          if [[ ! -x "$sdkmanager_bin" && -x "$sdk_root/tools/bin/sdkmanager" ]]; then
+            sdkmanager_bin="$sdk_root/tools/bin/sdkmanager"
+          fi
+          test -x "$sdkmanager_bin" || { echo "::error::Android SDK command-line tools missing: install them in a reviewed follow-up"; exit 1; }
+          "$sdkmanager_bin" --sdk_root="$sdk_root" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          python3 -m venv /tmp/deckcraft-icon-env
+          /tmp/deckcraft-icon-env/bin/pip install "Pillow==11.3.0"
+          echo "/tmp/deckcraft-icon-env/bin" >> "$GITHUB_PATH"
+
+      - name: Convert uploaded Dk derivative into builder icon PNG
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import hashlib
+          src = Path('deckcraft/android/icon/deckcraft-approved-192.webp')
+          assert hashlib.sha256(src.read_bytes()).hexdigest() == 'c689767e0bd04038d5ebe72d5c7c591426536ed0bb99b9df0aedf4bf90dc3b61'
+          with Image.open(src) as artwork:
+              assert artwork.size == (192, 192) and artwork.format == 'WEBP'
+              artwork.convert('RGBA').save(src.with_suffix('.png'), optimize=True)
+          print('Converted user-approved Dk art for builder density/adaptive generation')
+          PY
+
+      - name: Normalize Dk icon black surround for Android launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/normalize_deckcraft_icon.py deckcraft/android/icon/deckcraft-approved-192.png
+
+      - name: Apply isolated Android-only candidate version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          # These changes are confined to ephemeral checkouts, never upstream or suite main.
+          source = Path('builder/source/deckcraft/Cargo.toml')
+          s = source.read_text()
+          old = 'version = "0.9.0"'
+          assert s.count(old) == 1, 'Review new upstream manifest before changing version'
+          source.write_text(s.replace(old, 'version = "0.9.0-android.1"', 1))
+          project = Path('builder/lib/android_project.py')
+          p = project.read_text()
+          formula = 'return (1 << 24) | (major << 16) | (minor << 8) | patch'
+          assert p.count(formula) == 1, 'Version-code override location changed: stop'
+          project.write_text(p.replace(formula, 'return 100000001', 1))
+          print('Candidate metadata set: 0.9.0-android.1 / 100000001')
+          PY
+          git -C builder/source/deckcraft diff -- Cargo.toml
+          git -C builder diff -- lib/android_project.py
+
+      - name: Apply DeckCraft-only individual-font import (session scope)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/patch_deckcraft_fonts.py builder/source/deckcraft
+          git -C builder/source/deckcraft diff --check
+          git -C builder/source/deckcraft diff --stat
+          # Require the patch to stay confined to the reviewed DeckCraft UI files and version metadata.
+          python3 - <<'PY'
+          import subprocess
+          changed = set(subprocess.check_output(
+              ['git', '-C', 'builder/source/deckcraft', 'diff', '--name-only'], text=True
+          ).splitlines())
+          expected = {'Cargo.toml', 'crates/ui-egui/src/lib.rs', 'crates/ui-egui/src/menus.rs'}
+          assert changed == expected, f'Unexpected source changes: {changed ^ expected}'
+          print('DeckCraft-only patch scope verified:', sorted(changed))
+          PY
+
+      - name: Compile candidate with per-run temporary builder key
+        shell: bash
+        timeout-minutes: 60
+        env:
+          CARGO_BUILD_JOBS: "2"
+        run: |
+          set -euo pipefail
+          python3 deckcraft/android/adaptive_safe.py builder deckcraft
+          cd builder
+          bash build.sh -deckcraft -appicon="$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png"
+          test -s output/deckcraft-0.9.0-android.1.apk
+
+      - name: Check compiled APK package, ARM64, version, icon, signature and hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$GITHUB_WORKSPACE/builder/output/deckcraft-0.9.0-android.1.apk"
+          test -s "$apk"
+          # AAPT2 optimizes resource filenames to res/<opaque>.png/.xml in final APKs.
+          # Check resource-table identities and the actual launcher pixels, not ZIP filenames.
+          python3 - "$apk" "$ANDROID_HOME/build-tools/35.0.0/aapt2" "$GITHUB_WORKSPACE/deckcraft/android/icon/deckcraft-approved-192.png" <<'PY'
+          import hashlib, io, re, subprocess, sys, zipfile
+          from PIL import Image, ImageChops, ImageStat
+          apk, aapt2, approved = sys.argv[1:]
+          with zipfile.ZipFile(apk) as archive:
+              names = archive.namelist()
+              libs = [n for n in names if n.startswith('lib/') and n.endswith('.so')]
+              assert libs and all(n.startswith('lib/arm64-v8a/') for n in libs), libs
+              assert 'classes.dex' in names, 'Android Java bridge missing'
+              resources = subprocess.run([aapt2, 'dump', 'resources', apk], check=True, text=True, capture_output=True).stdout
+              for identity in ('mipmap/ic_launcher', 'drawable/ic_launcher_foreground', 'drawable/ic_launcher_background'):
+                  assert identity in resources, f'Android resource table missing {identity}'
+              badging = subprocess.run([aapt2, 'dump', 'badging', apk], check=True, text=True, capture_output=True).stdout
+              # On Android 26+, badging advertises adaptive XML at every density.
+              # AAPT2 retains legacy PNGs under opaque res/<id>.png paths.
+              icon_refs = re.findall(r"application-icon-\d+:'([^']+)'", badging)
+              assert icon_refs and all(p in names for p in icon_refs), 'Manifest adaptive launcher reference missing'
+              print('Manifest icon references:', icon_refs, flush=True)
+              with Image.open(approved) as original:
+                  expected = original.convert('RGB')
+                  best = None
+                  best_path = None
+                  candidates = [p for p in names if p.startswith('res/') and p.lower().endswith(('.png', '.webp'))]
+                  for path in candidates:
+                      try:
+                          with Image.open(io.BytesIO(archive.read(path))) as packaged:
+                              if packaged.width not in (48, 72, 96, 144, 192) or packaged.height != packaged.width:
+                                  continue
+                              actual = packaged.convert('RGB')
+                              resized = expected.resize(actual.size, Image.Resampling.LANCZOS)
+                              delta = ImageStat.Stat(ImageChops.difference(resized, actual)).mean
+                              score = sum(delta) / len(delta)
+                              if best is None or score < best:
+                                  best, best_path = score, path
+                      except (OSError, ValueError):
+                          continue
+                  print(f'Closest packaged Dk legacy raster: {best_path} (mean RGB difference {best})', flush=True)
+                  assert best is not None and best < 28, 'Approved Dk artwork not found in packaged legacy icon rasters'
+              print('PASS: ARM64-only, DEX, AAPT2 launcher/adaptive resource IDs, approved Dk artwork', flush=True)
+          PY
+          aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          badging="$("$aapt2" dump badging "$apk")"
+          [[ "$badging" == *"name='com.artcraft.deckcraft'"* ]] || { echo "::error::DeckCraft package mismatch"; exit 1; }
+          [[ "$badging" == *"versionCode='100000001'"* ]] || { echo "::error::DeckCraft versionCode mismatch"; exit 1; }
+          [[ "$badging" == *"versionName='0.9.0-android.1'"* ]] || { echo "::error::DeckCraft versionName mismatch"; exit 1; }
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+          sha256sum "$apk"
+          echo "Ephemeral candidate verified, NOT a permanent signing, device test, or public release."
+
+      - name: Erase temporary key and APK; never upload candidate binaries
+        if: always()
+        shell: bash
+        run: |
+          rm -rf builder/keys
+          rm -rf builder/output
+          echo 'Candidate APK and temporary signing materials discarded. No artifacts uploaded.'
