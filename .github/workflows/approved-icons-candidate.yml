@@ -1,0 +1,180 @@
+name: EffectCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/effectcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: effectcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Checkout candidate branch and suite builder
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Check upstream lock and staged feature tests
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 - <<''PY''
+
+        import json
+
+        from pathlib import Path
+
+        p=json.loads(Path(''tools/effectcraft/upstream-lock.json'').read_text())
+
+        assert p[''official_tag'']==''v0.16.0''
+
+        assert p[''official_commit'']==''9581b53c3f8945683252af0eb5fac79e0e43aed4''
+
+        assert p[''android_version_name'']==''0.16.0-android.2''
+
+        assert p[''expected_abi'']==''arm64-v8a''
+
+        assert p[''proposed_package'']==''com.artcraft.effectcraft''
+
+        assert p[''permanent_signing_ready''] is False
+
+        assert p[''public_release_enabled''] is False
+
+        PY
+
+        test ! -e keys/artcraft-builder.jks
+
+        test ! -e keys/.keystore-password
+
+        python3 -m py_compile tools/effectcraft/integrate_updater.py
+
+        python3 -m py_compile tools/effectcraft/prepare_candidate.py
+
+        python3 -m unittest discover -s tools/effectcraft -p ''test_*.py'' -v
+
+        rustc --edition=2021 --test adapters/effectcraft/src/font_library.rs -o "$RUNNER_TEMP/effectcraft-font-tests"
+
+        "$RUNNER_TEMP/effectcraft-font-tests"
+
+        '
+    - name: Set up Java 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Set up Rust 1.95 ARM64
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - name: Install Android SDK 35 and NDK 27
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK="$ANDROID_HOME"
+
+        test -d "$SDK/cmdline-tools"
+
+        echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+        SDKMANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+
+        test -n "$SDKMANAGER"
+
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+        "$SDKMANAGER" --install ''platforms;android-35'' ''build-tools;35.0.0'' ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Checkout immutable upstream EffectCraft v0.16.0 source
+      shell: bash
+      run: 'set -euo pipefail
+
+        mkdir -p source
+
+        git clone --depth 1 --branch v0.16.0 https://github.com/storytold/effectcraft.git source/effectcraft
+
+        test "$(git -C source/effectcraft rev-parse HEAD)" = ''9581b53c3f8945683252af0eb5fac79e0e43aed4''
+
+        grep -Fq ''version = "0.16.0"'' source/effectcraft/Cargo.toml
+
+        grep -Fq ''rust-version = "1.95"'' source/effectcraft/Cargo.toml
+
+        grep -Fq ''pub fn session() -> Session'' source/effectcraft/crates/host/src/lib.rs
+
+        echo "Pinned source $(git -C source/effectcraft rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+        '
+    - name: Apply guarded EffectCraft-only launcher patch in runner
+      run: python3 tools/effectcraft/prepare_candidate.py .
+    - name: Build disposable-key ARM64 candidate (never publish)
+      shell: bash
+      env:
+        ARTCRAFT_TARGET_SDK: '35'
+      run: 'set -euo pipefail
+
+        python3 tools/effectcraft/install_packager.py
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 tools/effectcraft/integrate_updater.py .
+
+        echo ''548b40f2997037c5861c602fecfad71ef8bf3c78ad9e6189c8409d0a78629b0b  tools/effectcraft/icon/ec-approved-512.png''
+        | sha256sum -c -
+
+        cp tools/effectcraft/icon/ec-approved-512.png source/effectcraft/ec-approved-512.png
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install . effectcraft
+
+        bash build.sh -effectcraft -packagename=com.artcraft.effectcraft -appicon=source/effectcraft/ec-approved-512.png
+
+        test -s output/effectcraft-0.16.0.apk
+
+        mv output/effectcraft-0.16.0.apk output/EffectCraft-v0.16.0-android.2-arm64-v8a.apk
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py . approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: EffectCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: EffectCraft-approved-icons-diagnostics
+        path: ./logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf ./keys

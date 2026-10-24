@@ -1,0 +1,46 @@
+{
+  "filename": "EffectCraft.png",
+  "source_sha256": "7b964522df335124bffa56213819951187c7fdb2e4fce3a337176cfab88c33ef",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#060084",
+  "letter_color": "#9999FF",
+  "glyph_source_bounds": [
+    401,
+    597,
+    1728,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    212,
+    139
+  ],
+  "app": "effectcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "121a08343f98b45370cc9d258d0a2dc203ef6928e68271dcb6222332559ace0d",
+    "res/mipmap-mdpi/ic_launcher_round.png": "121a08343f98b45370cc9d258d0a2dc203ef6928e68271dcb6222332559ace0d",
+    "res/values/colors.xml": "40ce1f549ce21601612026380f7cb79ed84edd0f7d1f2f579274918c745121bc",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "dd9ed65eef861618d95cb5a982104051c8aa8db88cb8a436064763e50339aab0",
+    "res/mipmap-xxhdpi/ic_launcher.png": "c9f40c18e5257919a28524319fb143bfe4caaf2daed20fd56eed356c5e2bcd06",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "c9f40c18e5257919a28524319fb143bfe4caaf2daed20fd56eed356c5e2bcd06",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "d6c9fa0836ff45e4ff2be116514e649a471e9815e8842f04b61652e1c16dff88",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "682681ae820051566f6631d40be3d91fdadb55b96964dd2dcb8ea7dd421d2002",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "d5c75ae776fceb3476d15dbbe3526ff5889beebc1af817feda5e80c37f221995",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "2053775f7bce2ff5a8dc8b22d3776d6783b3de7675df51529c2d6434d5f50bf4",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "8026461e82ba0706150ce8e74a0e2e01ee05c59fae9a8b52e6a9baa64491ffbc",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "8026461e82ba0706150ce8e74a0e2e01ee05c59fae9a8b52e6a9baa64491ffbc",
+    "res/mipmap-xhdpi/ic_launcher.png": "e354cc0e11e780e9a786bb62bd14a98d58c0134e198957a1cba97c57ad99227e",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "e354cc0e11e780e9a786bb62bd14a98d58c0134e198957a1cba97c57ad99227e",
+    "res/mipmap-hdpi/ic_launcher.png": "c2de95181d085de3fa02f56d9f648f7c69532bcda47a2584024f74b1ff6e66d1",
+    "res/mipmap-hdpi/ic_launcher_round.png": "c2de95181d085de3fa02f56d9f648f7c69532bcda47a2584024f74b1ff6e66d1"
+  },
+  "display_name": "EffectCraft",
+  "version_name": "0.16.0-android.4",
+  "version_code": 16781316,
+  "previous_version_code": 16781314,
+  "package": "com.artcraft.effectcraft"
+}
