@@ -14,7 +14,7 @@
   "existing_signed_version_code_floor_exclusive": 16780805,
   "production_signing_allowed": false,
   "production_apk_build_allowed": false,
-  "test_apk_build_allowed": false,
+  "test_apk_build_allowed": true,
   "publishing_allowed": false,
   "automatic_upstream_sync_allowed": false
 }

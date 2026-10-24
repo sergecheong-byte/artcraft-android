@@ -1,0 +1,146 @@
+name: VectorCraft v0.16 Popup Test APK (never publish)
+
+on:
+  push:
+    branches: [development/vectorcraft-v016-popup-test-20261024]
+    paths:
+      - '.github/workflows/vectorcraft-v016-test-apk.yml'
+      - 'tools/vectorcraft_v016_candidate.py'
+      - 'tools/vectorcraft_v016_compat.py'
+      - 'tools/vectorcraft/**'
+      - 'configs/vectorcraft-v0.16.0-android.1.json'
+      - 'adapters/vectorcraft/**'
+      - 'assets/branding/vectorcraft/**'
+  workflow_dispatch:
+
+# This workflow never sees permanent signing secrets, and cannot publish Releases.
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorcraft-v016-popup-candidate
+  cancel-in-progress: false
+
+jobs:
+  test-package:
+    if: github.repository == 'KosmosSG/artcraft-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      VERSION_NAME: '0.16.0-android.1'
+      TEST_VERSION_CODE: '16780806'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Prove source lock, preserve Android features, and test candidate staging
+        run: |
+          set -euo pipefail
+          python3 tools/vectorcraft_v016_compat.py preflight
+          # Test only on this branch with disposable signature; no production signer.
+          test "$GITHUB_REF" = "refs/heads/development/vectorcraft-v016-popup-test-20261024"
+          test ! -e builder/keys/artcraft-builder.jks || exit 1
+          python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: 10190753ef356ce8de7592626bcb99fd69db467c
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Pin reviewed builder and official VectorCraft source
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          python3 tools/vectorcraft_v016_compat.py source builder/source/vectorcraft
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-linux-android
+      - name: Install pinned Android tools
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage reviewed adapter, approved Vc icon and separate Test-only identity
+        run: |
+          set -euo pipefail
+          test ! -e builder/keys/artcraft-builder.jks
+          test -s adapters/vectorcraft/src/lib.rs
+          rm -rf builder/adapters/vectorcraft
+          cp -a adapters/vectorcraft builder/adapters/vectorcraft
+          python3 tools/vectorcraft_v016_candidate.py stage builder
+          python3 tools/vectorcraft_v016_candidate.py verify builder
+          python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
+          python3 tools/vectorcraft/patch_android_menus.py builder
+          python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$TEST_VERSION_CODE"
+          # Do not pre-create apps/vectorcraft-android: the pinned builder
+          # refuses to overwrite an unmarked user directory. It must copy the
+          # already-isolated adapter from builder/adapters/vectorcraft itself.
+          test ! -e builder/source/vectorcraft/apps/vectorcraft-android
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
+          python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/vc-no-border.png"
+          python3 tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/vc-no-border.png"
+      - name: Compile ARM64 Test APK using disposable builder key
+        timeout-minutes: 135
+        run: |
+          set -euo pipefail
+          ICON="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
+          python3 tools/vectorcraft/clean_launcher_icon.py "$ICON" "$RUNNER_TEMP/vectorcraft-launcher.png"
+          bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/vectorcraft-launcher.png"
+      - name: Verify distinct package, ABI, version, launcher and temporary signature
+        run: |
+          set -euo pipefail
+          # Verify the builder-generated launcher and the exact v0.16 menus
+          # before retaining any test APK as a downloadable artifact.
+          python3 tools/vectorcraft_v016_compat.py port builder/source/vectorcraft
+          mkdir -p candidate
+          test "$(find builder/output -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
+          cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk
+          test -s candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk
+          APK=candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, zipfile
+          text = Path('candidate/badging.txt').read_text()
+          m = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text, re.M)
+          assert m, "Missing Android package metadata"
+          assert m.group(1) == 'com.artcraft.vectorcraft.candidate', 'STOP: production package cannot be used'
+          assert m.group(3) == '0.16.0-android.1', 'Unexpected version'
+          assert int(m.group(2)) == 16780806, 'Unexpected reserved candidate code'
+          assert "launchable-activity: name='com.artcraft.vectorcraft.candidate.VectorCraftActivity'" in text
+          with zipfile.ZipFile('candidate/VectorCraft-v0.16.0-android.1-POPUP-TEST-ONLY.apk') as z:
+              names=z.namelist()
+              assert any(n.startswith('lib/arm64-v8a/') and n.endswith('.so') for n in names), 'ARM64 library missing'
+              assert any(n.endswith('.dex') for n in names), 'Java Activity missing'
+          print('PASS: Test-only package, ARM64/Java resources and versionCode')
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/temp-signing.txt
+          sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+      - name: Retain Test-only candidate in Actions artifact; NEVER GitHub Releases
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: VectorCraft-v016-Popup-Test-ONLY-Temporary-Signer
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Delete disposable local build key
+        if: always()
+        run: rm -rf builder/keys
