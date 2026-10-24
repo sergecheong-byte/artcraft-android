@@ -1,0 +1,204 @@
+name: WordCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/wordcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: wordcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      WORDCRAFT_UPSTREAM_COMMIT: 2e6db0bd88795e80375176c01665cff7dbe2b057
+      WORDCRAFT_BUILDER_COMMIT: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      WORDCRAFT_VERSION_NAME: 0.9.0-android.3
+      WORDCRAFT_CANDIDATE_VERSION_CODE: '100000003'
+      WORDCRAFT_PACKAGE: com.artcraft.wordcraft
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Checkout WordCraft-only candidate
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout pinned reference builder
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - name: Checkout pinned stable WordCraft
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        repository: storytold/wordcraft
+        ref: 2e6db0bd88795e80375176c01665cff7dbe2b057
+        path: builder/source/wordcraft
+        persist-credentials: false
+    - name: Confirm stable tag, exact commits, isolated input and icon digest
+      shell: bash
+      run: 'set -euo pipefail
+
+        test "$(git -C builder rev-parse HEAD)" = "$WORDCRAFT_BUILDER_COMMIT"
+
+        test "$(git -C builder/source/wordcraft rev-parse HEAD)" = "$WORDCRAFT_UPSTREAM_COMMIT"
+
+        test -z "$(git -C builder/source/wordcraft status --porcelain)"
+
+        tag_commit="$(git ls-remote https://github.com/storytold/wordcraft.git refs/tags/v0.9.0 | awk ''{print $1}'')"
+
+        test "$tag_commit" = "$WORDCRAFT_UPSTREAM_COMMIT"
+
+        echo ''71bf833ddbc94b2edbf6ff2cf944bce9696f1e73f851f0f9a176a9fb7fdf7766  wordcraft/android/icon/wordcraft-approved-192.webp''
+        | sha256sum --check
+
+        '
+    - name: Set up Java, Rust and Android build prerequisites
+      shell: bash
+      run: "set -euo pipefail\njava -version\nrustup toolchain install stable --profile minimal\nrustup default stable\nrustup\
+        \ target add aarch64-linux-android\ncargo install cargo-ndk --locked\n# GitHub's Ubuntu image may have SDK command-line\
+        \ tools installed but not on PATH.\n# Look only under the runner's Android SDK; do not download unverified installers.\n\
+        sdk_root=\"${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}\"\ntest -d \"$sdk_root\" || { echo \"\
+        ::error::Android SDK root not found\"; exit 1; }\nsdkmanager_bin=\"$sdk_root/cmdline-tools/latest/bin/sdkmanager\"\
+        \nif [[ ! -x \"$sdkmanager_bin\" ]]; then\n  sdkmanager_bin=\"$(find \"$sdk_root/cmdline-tools\" -type f -name sdkmanager\
+        \ -print -quit 2>/dev/null || true)\"\nfi\nif [[ ! -x \"$sdkmanager_bin\" && -x \"$sdk_root/tools/bin/sdkmanager\"\
+        \ ]]; then\n  sdkmanager_bin=\"$sdk_root/tools/bin/sdkmanager\"\nfi\ntest -x \"$sdkmanager_bin\" || { echo \"::error::Android\
+        \ SDK command-line tools missing: install them in a reviewed follow-up\"; exit 1; }\n\"$sdkmanager_bin\" --sdk_root=\"\
+        $sdk_root\" --install \"platforms;android-35\" \"build-tools;35.0.0\" \"ndk;27.2.12479018\"\necho \"ANDROID_HOME=$sdk_root\"\
+        \ >> \"$GITHUB_ENV\"\necho \"ANDROID_NDK_HOME=$sdk_root/ndk/27.2.12479018\" >> \"$GITHUB_ENV\"\npython3 -m venv /tmp/wordcraft-icon-env\n\
+        /tmp/wordcraft-icon-env/bin/pip install \"Pillow==11.3.0\"\necho \"/tmp/wordcraft-icon-env/bin\" >> \"$GITHUB_PATH\"\
+        \n"
+    - name: Convert uploaded Wc derivative into builder icon PNG
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY'\nfrom pathlib import Path\nfrom PIL import Image\nimport hashlib\nsrc = Path('wordcraft/android/icon/wordcraft-approved-192.webp')\n\
+        assert hashlib.sha256(src.read_bytes()).hexdigest() == '71bf833ddbc94b2edbf6ff2cf944bce9696f1e73f851f0f9a176a9fb7fdf7766'\n\
+        with Image.open(src) as artwork:\n    assert artwork.size == (192, 192) and artwork.format == 'WEBP'\n    artwork.convert('RGBA').save(src.with_suffix('.png'),\
+        \ optimize=True)\nprint('Converted user-approved Wc art for builder density/adaptive generation')\nPY\n\npython3 wordcraft/android/prepare_icon.py\
+        \ wordcraft/android/icon/wordcraft-approved-192.webp wordcraft/android/icon/wordcraft-approved-192.png\n"
+    - name: Test native menu patch and launcher mask borders against pinned sources
+      run: 'mkdir -p wordcraft/android/reference
+
+        cp builder/lib/build-common.sh wordcraft/android/reference/build-common.sh
+
+        cp builder/lib/app_icons.py wordcraft/android/reference/app_icons.py
+
+        cp builder/templates/android/SafActivity.java wordcraft/android/reference/SafActivity.java
+
+        cp builder/source/wordcraft/crates/ui-egui/src/ribbon.rs wordcraft/android/reference/ribbon.rs
+
+        python3 -m unittest discover -s wordcraft/android -p ''test_revision.py'' -v
+
+        '
+    - name: Apply isolated Android-only candidate version metadata
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 - <<''PY''
+
+        from pathlib import Path
+
+        # These changes are confined to ephemeral checkouts, never upstream or suite main.
+
+        source = Path(''builder/source/wordcraft/Cargo.toml'')
+
+        s = source.read_text()
+
+        old = ''version = "0.9.0"''
+
+        assert s.count(old) == 1, ''Review new upstream manifest before changing version''
+
+        source.write_text(s.replace(old, ''version = "0.9.0-android.3"'', 1))
+
+        project = Path(''builder/lib/android_project.py'')
+
+        p = project.read_text()
+
+        formula = ''return (1 << 24) | (major << 16) | (minor << 8) | patch''
+
+        assert p.count(formula) == 1, ''Version-code override location changed: stop''
+
+        project.write_text(p.replace(formula, ''return 100000003'', 1))
+
+        print(''Candidate metadata set: 0.9.0-android.3 / 100000003'')
+
+        PY
+
+        git -C builder/source/wordcraft diff -- Cargo.toml
+
+        git -C builder diff -- lib/android_project.py
+
+        '
+    - name: Test asynchronous font refresh feedback
+      run: 'rustc --edition=2024 --test wordcraft/android/refresh_feedback.rs -o /tmp/wordcraft-refresh-tests
+
+        /tmp/wordcraft-refresh-tests
+
+        '
+    - name: Integrate WordCraft persistent font import (isolated builder only)
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -m py_compile wordcraft/android/patch_builder.py
+
+        python3 wordcraft/android/patch_builder.py builder
+
+        '
+    - name: Compile candidate with per-run temporary builder key
+      shell: bash
+      timeout-minutes: 60
+      env:
+        CARGO_BUILD_JOBS: '2'
+      run: 'set -euo pipefail
+
+        python3 wordcraft/android/adaptive_safe.py builder wordcraft
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install builder wordcraft
+
+        cd builder
+
+        bash build.sh -wordcraft -appicon="$GITHUB_WORKSPACE/wordcraft/android/icon/wordcraft-approved-192.png"
+
+        test -s output/wordcraft-0.9.0-android.3.apk
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py builder approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: WordCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: WordCraft-approved-icons-diagnostics
+        path: builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf builder/keys

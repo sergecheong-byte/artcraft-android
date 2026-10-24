@@ -1,0 +1,46 @@
+{
+  "filename": "WordCraft.png",
+  "source_sha256": "6ba5950f28a2bab3316b9d0f9d895d2895d98f4cf67db801f259d7a78547d62b",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#0E52A5",
+  "letter_color": "#7AD8FC",
+  "glyph_source_bounds": [
+    86,
+    597,
+    1983,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    230,
+    106
+  ],
+  "app": "wordcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "332f8a50e62249adacd6e2b3ecbafeb5eed114996a2952d68650c79f55f70309",
+    "res/mipmap-mdpi/ic_launcher_round.png": "332f8a50e62249adacd6e2b3ecbafeb5eed114996a2952d68650c79f55f70309",
+    "res/values/colors.xml": "f177819e48df79b6484057f4d9220b23a98e8939f904a1d481c370f5b646b010",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "3d1e388396e4f7f55a7b5d67beb58d6b5bb697be3d24328f504ac897bb12a18c",
+    "res/mipmap-xxhdpi/ic_launcher.png": "a92de70f0e85b76342cc2c9e62ab6d3411f5170685d3a2c6e2840b16efc568f1",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "a92de70f0e85b76342cc2c9e62ab6d3411f5170685d3a2c6e2840b16efc568f1",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "05c6234444ff4dae5c3c1c8c76893c55c044eca5383861f1a80e070ff6b60c16",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "148e6919fd46b92bd84c1392bc5a46a4b9e571c3bad3dda682f9ffbecda91230",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "178a47d47701d7273243db73fa09263bad7226875f5098c85ebe016c769fa3ec",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "4e237d86e8a926b0a669fc527f612b2ebabac7ba7094e0ed8a4a06c868043e15",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "f056340c3cad6d380d94a3dd6e8f3843baf16054ec728589e78df6de000e05d0",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "f056340c3cad6d380d94a3dd6e8f3843baf16054ec728589e78df6de000e05d0",
+    "res/mipmap-xhdpi/ic_launcher.png": "e2138976e5cece15598d05d83863d5768be6b85c6c10d68db1a660ae5ef848c1",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "e2138976e5cece15598d05d83863d5768be6b85c6c10d68db1a660ae5ef848c1",
+    "res/mipmap-hdpi/ic_launcher.png": "dfb38cea22da1cca6754cffa9ac23f6bc938535d39bf45cc88ab0b6c28155ef9",
+    "res/mipmap-hdpi/ic_launcher_round.png": "dfb38cea22da1cca6754cffa9ac23f6bc938535d39bf45cc88ab0b6c28155ef9"
+  },
+  "display_name": "WordCraft",
+  "version_name": "0.9.0-android.4",
+  "version_code": 100000004,
+  "previous_version_code": 100000003,
+  "package": "com.artcraft.wordcraft"
+}
