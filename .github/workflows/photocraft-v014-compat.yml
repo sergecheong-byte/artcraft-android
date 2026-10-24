@@ -2,7 +2,7 @@ name: PhotoCraft v0.14 Android compatibility and Test APK
 
 on:
   push:
-    branches: [development/photocraft-v014-android1-20261023]
+    branches: [development/photocraft-v014-android1-20261023, development/photocraft-v014-update-dock-20261023]
     paths:
       - '.github/workflows/photocraft-v014-compat.yml'
       - 'configs/photocraft-v0.14.0-android.1.json'
@@ -10,6 +10,7 @@ on:
       - 'tools/photocraft_v014_menu_port.py'
       - 'tools/photocraft_v014_menu_guard.py'
       - 'tools/tests/test_photocraft_v014_menu_guard.py'
+      - 'tools/tests/test_photocraft_v014_update_dock.py'
       - 'lib/build-common.sh'
       - 'tools/photocraft_v014_brand_port.py'
       - 'adapters/photocraft/**'
@@ -22,7 +23,7 @@ permissions:
 
 jobs:
   guarded-android-test:
-    if: github.repository == 'KosmosSG/artcraft-android' && github.ref == 'refs/heads/development/photocraft-v014-android1-20261023'
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/development/photocraft-v014-android1-20261023' || github.ref == 'refs/heads/development/photocraft-v014-update-dock-20261023')
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -50,6 +51,7 @@ jobs:
           PY
           python3 -m unittest discover -s tools/tests -p 'test_photocraft_v012_candidate.py' -v
           python3 -m unittest discover -s tools/tests -p 'test_photocraft_v014_menu_guard.py' -v
+          python3 -m unittest discover -s tools/tests -p 'test_photocraft_v014_update_dock.py' -v
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.95.0'
@@ -98,6 +100,11 @@ jobs:
         timeout-minutes: 130
         run: |
           set -euo pipefail
+          # Prove the packaging process takes the reviewed v0.14 menu port,
+          # never the v0.12 git-apply patch that failed a previous CI run.
+          test "$ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME" = "0.14.0-android.1"
+          python3 tools/photocraft_v014_menu_guard.py source/photocraft
+          grep -Fq 'skipping incompatible legacy patch' lib/build-common.sh
           bash build.sh -photocraft
           mkdir -p candidate
           test "$(find output -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 1

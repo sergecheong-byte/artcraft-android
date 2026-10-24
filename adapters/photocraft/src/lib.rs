@@ -714,6 +714,7 @@ use android_modifiers::{AndroidModifiers, apply_android_modifiers};
 struct UpdateDialogState {
     open: bool,
     checking: bool,
+    started_at: Option<std::time::Instant>,
     message: String,
     release_url: Option<String>,
 }
@@ -856,14 +857,25 @@ impl eframe::App for PhotoCraftAndroidApp {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.picker.poll(&self.bridge, ctx);
         if self.updates.checking {
+            // A delayed Android worker must never block visible progress indefinitely.
+            if self.updates.started_at.is_some_and(|at|
+                at.elapsed() >= std::time::Duration::from_secs(30)) {
+                self.updates.checking = false;
+                self.updates.started_at = None;
+                self.updates.release_url = None;
+                self.updates.message = "Update check timed out. Check your connection and try again.".into();
+                self.updates.open = true;
+                ctx.request_repaint();
+            } else {
             match self.bridge.poll_update_result() {
                 Ok(Some(raw)) => {
                     self.updates.checking = false;
+                    self.updates.started_at = None;
                     match serde_json::from_str::<serde_json::Value>(&raw) {
                         Ok(result) => {
                             self.updates.release_url = result.get("url")
                                 .and_then(serde_json::Value::as_str)
-                                .filter(|url| url.starts_with("https://github.com/KosmosSG/artcraft-android/releases/"))
+                                .filter(|url| url.starts_with("https://github.com/KosmosSG/artcraft-android/releases/tag/photocraft-v"))
                                 .map(str::to_owned);
                             let installed = result.get("installed_version")
                                 .and_then(serde_json::Value::as_str).unwrap_or("unknown");
@@ -884,14 +896,19 @@ impl eframe::App for PhotoCraftAndroidApp {
                         }
                         Err(error) => self.updates.message = format!("Invalid update response: {error}"),
                     }
+                    if self.updates.message.starts_with("Update available:") {
+                        self.updates.open = true;
+                    }
                     ctx.request_repaint();
                 }
                 Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
                 Err(error) => {
                     self.updates.checking = false;
+                    self.updates.started_at = None;
                     self.updates.message = format!("Update checker unavailable: {error}");
                     ctx.request_repaint();
                 }
+            }
             }
         }
         // Deliver any file the system asked us to open through the app's own inbox.
@@ -926,6 +943,31 @@ impl eframe::App for PhotoCraftAndroidApp {
                 }
             }
         }
+        // Dock the update checker BEFORE rendering the document so no floating
+        // window covers tools, handles or drawing gestures on the tablet.
+        let mut dismiss_updates = false;
+        if self.updates.open {
+            egui::Panel::bottom("photocraft.android.update_status")
+                .resizable(false)
+                .default_size(76.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong("PhotoCraft Updates");
+                        if ui.small_button("Dismiss").clicked() { dismiss_updates = true; }
+                    });
+                    ui.label(&self.updates.message);
+                    if self.updates.checking {
+                        ui.spinner();
+                    } else if let Some(url) = self.updates.release_url.as_deref() {
+                        if ui.button("Open official GitHub release").clicked() {
+                            if let Err(error) = self.bridge.open_update_page(url) {
+                                log::warn!("Could not open release page: {error}");
+                            }
+                        }
+                    }
+                });
+        }
+        if dismiss_updates { self.updates.open = false; }
         self.inner.ui(ui, _frame);
         let take = |key: &str| ui.ctx().data_mut(|data| {
             let id = egui::Id::new(key);
@@ -950,30 +992,18 @@ impl eframe::App for PhotoCraftAndroidApp {
         }
         if take("artcraft.check_updates_requested") {
             self.updates.open = true;
+            ui.ctx().request_repaint();
             self.updates.release_url = None;
             self.updates.message = "Checking GitHub releases…".into();
             if !self.updates.checking {
                 match self.bridge.check_for_updates() {
-                    Ok(()) => self.updates.checking = true,
+                    Ok(()) => {
+                        self.updates.checking = true;
+                        self.updates.started_at = Some(std::time::Instant::now());
+                    },
                     Err(error) => self.updates.message = format!("Could not start update check: {error}"),
                 }
             }
-        }
-        if self.updates.open {
-            egui::Window::new("PhotoCraft Updates")
-                .open(&mut self.updates.open)
-                .show(ui.ctx(), |ui| {
-                    ui.label(&self.updates.message);
-                    if self.updates.checking {
-                        ui.spinner();
-                    } else if let Some(url) = self.updates.release_url.as_deref() {
-                        if ui.button("Open official GitHub release").clicked() {
-                            if let Err(error) = self.bridge.open_update_page(url) {
-                                log::warn!("Could not open release page: {error}");
-                            }
-                        }
-                    }
-                });
         }
         for status in [&self.picker.font_status, &self.picker.shared_font_status] {
             let mut message = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -1085,6 +1115,7 @@ fn android_main(android_app: AndroidApp) {
         Ok(true) => match app_bridge.check_for_updates() {
             Ok(()) => {
                 state.checking = true;
+                state.started_at = Some(std::time::Instant::now());
                 state.message = "Checking for PhotoCraft updates…".into();
                 log::info!("PhotoCraft opted-in startup update check started");
             }
