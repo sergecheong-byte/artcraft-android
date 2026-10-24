@@ -1,0 +1,143 @@
+name: LightCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/lightcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: lightcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Checkout reviewed suite (read only)
+      uses: actions/checkout@v4
+      with:
+        path: suite
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s suite/tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Checkout immutable official LightCraft v0.11.0
+      uses: actions/checkout@v4
+      with:
+        repository: storytold/lightcraft
+        ref: ec0cda9a6f320e3b32f659f16718f7bce6c3f12f
+        path: source
+        persist-credentials: false
+    - name: Checkout reviewed Android builder
+      uses: actions/checkout@v4
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - name: Checkout second Android reference for locked provenance
+      uses: actions/checkout@v4
+      with:
+        repository: morte2437/photocraft-android
+        ref: 71c919b768c6d70bc8231b92e3de6a81fb949996
+        path: android-reference
+        persist-credentials: false
+    - name: Validate immutable source, API and approved original icon
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -m unittest discover -s suite/tools/lightcraft -p ''test_*.py'' -v
+
+        python3 suite/tools/lightcraft/audit_source.py source builder android-reference suite > lightcraft-source-preflight.json
+
+        cat lightcraft-source-preflight.json >> "$GITHUB_STEP_SUMMARY"
+
+        '
+    - name: Set up Python for adaptive launcher icons
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install Pillow for Android adaptive launcher artwork
+      run: python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+    - name: Java and Rust Android ARM64 toolchain
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+        components: rustfmt
+    - name: Install Android SDK packages
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+        echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+
+        echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+        MANAGER="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+
+        test -n "$MANAGER"
+
+        echo "$(dirname "$MANAGER")" >> "$GITHUB_PATH"
+
+        "$MANAGER" --install ''platforms;android-35'' ''build-tools;35.0.0'' ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Install isolated Rust Android build tooling
+      shell: bash
+      run: cargo install cargo-ndk --locked
+    - name: Apply isolated LightCraft borderless launcher and Help update-check patch
+      shell: bash
+      run: "set -euo pipefail\npython3 -m py_compile suite/tools/lightcraft/apply_android_fixes.py\npython3 suite/tools/lightcraft/apply_android_fixes.py\
+        \ \\\n  --builder builder --source source --suite suite\ntest -s builder/templates/android/lightcraft_updates.rs\n\
+        test -s builder/templates/android/lightcraft_updates.java.inc\n"
+    - name: Build the full LightCraft app with the reviewed Android SAF bridge
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p builder/source\nmv source builder/source/lightcraft\ntest \"$(git -C builder/source/lightcraft\
+        \ rev-parse HEAD)\" = 'ec0cda9a6f320e3b32f659f16718f7bce6c3f12f'\n# The builder uses an automatically generated, disposable\
+        \ local key.\n# This APK is NOT a production release and MUST NOT be published.\npython3 -m pip install Pillow==11.3.0\n\
+        python3 suite/tools/approved-branding/approved_branding.py install builder lightcraft\nbash builder/build.sh -lightcraft\
+        \ \\\n  -packagename=com.artcraft.lightcraft \\\n  -appname=LightCraft \\\n  \"-appicon=$GITHUB_WORKSPACE/suite/assets/lightcraft/lc-user-approved.png\"\
+        \n"
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 suite/tools/approved-branding/verify_apk.py builder approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: LightCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: LightCraft-approved-icons-diagnostics
+        path: builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf builder/keys

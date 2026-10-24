@@ -1,0 +1,46 @@
+{
+  "filename": "LightCraft.png",
+  "source_sha256": "7382b8c1fbcafeb058f4badce20fd94da379db377ae31006b8292f76b440eda1",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#003654",
+  "letter_color": "#01A5F5",
+  "glyph_source_bounds": [
+    436,
+    597,
+    1693,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    208,
+    144
+  ],
+  "app": "lightcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "79d2c6376319e23696c2aa77b1b1d91b19cb0c350ad89ac086987da5fb4ed130",
+    "res/mipmap-mdpi/ic_launcher_round.png": "79d2c6376319e23696c2aa77b1b1d91b19cb0c350ad89ac086987da5fb4ed130",
+    "res/values/colors.xml": "0be34eeebde6a4e68458086334541e4b0587db59a3db30217df8b165338161d7",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "ee97299daf19ad243aa87e955ac9a95e8452ada487fcfc61d68354cce534237c",
+    "res/mipmap-xxhdpi/ic_launcher.png": "4f3726011b734dde6d44035c0322248fa9de327a246e79bd10dce0c6bddf5dad",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "4f3726011b734dde6d44035c0322248fa9de327a246e79bd10dce0c6bddf5dad",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "54781fdce77f79340ff72e5e058f9012f1d17fa623fb11c4bd5b8e315d7f4c23",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "b3e7fee83ba8cd48886dc6a5aef9c651ce22ac29f65ca38f973239b49a9f17fa",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "3b67b1046b3e15fa8c81b1d72bcf9b66d7a7181cddcbc04f3c6129bac09a8bbb",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "1492e495f96f5d96dccf1f56bc0adce425b43e579ae8082fe124a0ebcc67c868",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "7170ec6ca81701bb258d04e023409f47d94ccde7d256f61e1675712aa49da682",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "7170ec6ca81701bb258d04e023409f47d94ccde7d256f61e1675712aa49da682",
+    "res/mipmap-xhdpi/ic_launcher.png": "4a02f68ae0d854f79a4678e107262bbdc001412059e8688904db5b11b2a68e94",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "4a02f68ae0d854f79a4678e107262bbdc001412059e8688904db5b11b2a68e94",
+    "res/mipmap-hdpi/ic_launcher.png": "5e027e336d955792e72d4aecd8d45f69948204ad250b15209e1da1f0bf8d9368",
+    "res/mipmap-hdpi/ic_launcher_round.png": "5e027e336d955792e72d4aecd8d45f69948204ad250b15209e1da1f0bf8d9368"
+  },
+  "display_name": "LightCraft",
+  "version_name": "0.11.0-android.7",
+  "version_code": 16780039,
+  "previous_version_code": 16780038,
+  "package": "com.artcraft.lightcraft"
+}
