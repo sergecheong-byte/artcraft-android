@@ -59,6 +59,79 @@ pub fn apply_android_modifiers(state: &mut AndroidModifiers, raw: &mut egui::Raw
     raw.events = kept;
 }
 
+/// Minimal event counters for tablet debugging; never retain actual typed text.
+#[derive(Default)]
+pub struct KeyboardDiagnostics {
+    pub key_downs: u64,
+    pub text_events: u64,
+    pub ime_events: u64,
+    pub fallback_events: u64,
+    pub last_key: String,
+}
+
+impl KeyboardDiagnostics {
+    pub fn observe(&mut self, raw: &egui::RawInput) {
+        for event in &raw.events {
+            match event {
+                egui::Event::Key { key, physical_key, pressed: true, .. } => {
+                    self.key_downs = self.key_downs.saturating_add(1);
+                    self.last_key = format!("{:?}", physical_key.unwrap_or(*key));
+                }
+                egui::Event::Text(_) => {
+                    self.text_events = self.text_events.saturating_add(1);
+                }
+                egui::Event::Ime(_) => {
+                    self.ime_events = self.ime_events.saturating_add(1);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Some Android hardware keyboards emit an egui Key event but no Text event.
+/// Official VectorCraft v0.14 tool switching (V=Selection, T=Type, etc.) listens
+/// for Text, so such hardware cannot switch tools. Add a plain ASCII letter
+/// only when that frame has NO native Text or IME event and no editing focus.
+/// Do not change or suppress any original event. Never synthesize Ctrl/Alt
+/// chords, repeated keys or ongoing text editing/IME: no duplicate letters.
+pub fn restore_tool_key_text(raw: &mut egui::RawInput, tool_shortcuts_allowed: bool) -> usize {
+    if !tool_shortcuts_allowed || raw.events.iter().any(|event| {
+        matches!(event, egui::Event::Text(_) | egui::Event::Ime(_))
+    }) {
+        return 0;
+    }
+    let mut restored = 0;
+    let mut events = Vec::with_capacity(raw.events.len() + 2);
+    for event in raw.events.drain(..) {
+        let generated = match &event {
+            egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers } 
+                if !modifiers.command && !modifiers.ctrl && !modifiers.alt =>
+            {
+                let key = physical_key.unwrap_or(*key);
+                let name = key.name();
+                if name.len() == 1 && name.as_bytes()[0].is_ascii_alphabetic() {
+                    Some(if modifiers.shift {
+                        name.to_ascii_uppercase()
+                    } else {
+                        name.to_ascii_lowercase()
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        events.push(event);
+        if let Some(letter) = generated {
+            events.push(egui::Event::Text(letter));
+            restored += 1;
+        }
+    }
+    raw.events = events;
+    restored
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +145,62 @@ mod tests {
         apply_android_modifiers(state, &mut raw);
         raw.events
     }
+    #[test]
+    fn bare_v_and_t_are_repaired_from_key_only_frames() {
+        let mut state = AndroidModifiers::default();
+        for (pressed_key, expected) in [(Key::V, "v"), (Key::T, "t")] {
+            let mut raw = RawInput { events: apply(&mut state, vec![key(pressed_key, true)]), ..Default::default() };
+            assert_eq!(restore_tool_key_text(&mut raw, true), 1);
+            assert!(matches!(&raw.events[0], Event::Key { pressed: true, .. }));
+            assert!(matches!(&raw.events[1], Event::Text(text) if text == expected));
+        }
+    }
+
+    #[test]
+    fn never_double_native_text_or_editing_ime_events() {
+        let mut state = AndroidModifiers::default();
+        let events = [
+            vec![key(Key::V, true), Event::Text("v".into())],
+            vec![key(Key::T, true), Event::Ime(egui::ImeEvent::Commit("你好".into()))],
+        ];
+        for original in events {
+            let mut raw = RawInput { events: apply(&mut state, original), ..Default::default() };
+            let unchanged = format!("{:?}", raw.events);
+            assert_eq!(restore_tool_key_text(&mut raw, true), 0);
+            assert_eq!(format!("{:?}", raw.events), unchanged);
+        }
+        let mut raw = RawInput { events: vec![key(Key::T, true)], ..Default::default() };
+        assert_eq!(restore_tool_key_text(&mut raw, false), 0);
+        assert_eq!(raw.events.len(), 1);
+    }
+
+    #[test]
+    fn modifier_chords_repeat_and_shift_are_respected() {
+        let mut state = AndroidModifiers::default();
+        let events = apply(&mut state, vec![key(Key::ControlLeft, true), key(Key::V, true)]);
+        let mut raw = RawInput { events, ..Default::default() };
+        assert_eq!(restore_tool_key_text(&mut raw, true), 0);
+        apply(&mut state, vec![key(Key::ControlLeft, false)]);
+        let events = apply(&mut state, vec![key(Key::ShiftRight, true), key(Key::T, true)]);
+        let mut raw = RawInput { events, ..Default::default() };
+        assert_eq!(restore_tool_key_text(&mut raw, true), 1);
+        assert!(matches!(raw.events.last(), Some(Event::Text(letter)) if letter == "T"));
+        let mut repeated = RawInput { events: vec![
+            Event::Key { key: Key::V, physical_key: Some(Key::V), pressed: true, repeat: true, modifiers: Modifiers::NONE }
+        ], ..Default::default() };
+        assert_eq!(restore_tool_key_text(&mut repeated, true), 0);
+        assert_eq!(repeated.events.len(), 1);
+    }
+
+    #[test]
+    fn repair_uses_physical_letter_when_logical_key_is_unknown() {
+        let mut raw = RawInput { events: vec![
+            Event::Key { key: Key::Z, physical_key: Some(Key::V), pressed: true, repeat: false, modifiers: Modifiers::NONE }
+        ], ..Default::default() };
+        assert_eq!(restore_tool_key_text(&mut raw, true), 1);
+        assert!(matches!(raw.events.last(), Some(Event::Text(letter)) if letter == "v"));
+    }
+
     #[test]
     fn releasing_one_side_preserves_the_other() {
         for (left, right, field) in [

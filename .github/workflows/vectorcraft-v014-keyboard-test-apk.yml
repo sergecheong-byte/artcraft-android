@@ -1,0 +1,159 @@
+name: VectorCraft v0.14 Keyboard Test APK (separate install)
+
+on:
+  push:
+    branches: [test/vectorcraft-v014-keyboard-apk-20261024]
+    paths:
+      - 'adapters/vectorcraft/**'
+      - 'tools/vectorcraft/**'
+      - '.github/workflows/vectorcraft-v014-keyboard-test-apk.yml'
+      - 'assets/branding/vectorcraft/**'
+  pull_request:
+    paths:
+      - 'adapters/vectorcraft/**'
+      - 'tools/vectorcraft/**'
+      - '.github/workflows/vectorcraft-v014-keyboard-test-apk.yml'
+  workflow_dispatch:
+
+# A read-only, separately installable candidate. NEVER production-sign or publish.
+permissions:
+  contents: read
+concurrency:
+  group: vectorcraft-v014-keyboard-test-apk
+  cancel-in-progress: false
+
+jobs:
+  build-test-apk:
+    if: github.repository == 'KosmosSG/artcraft-android' && (github.ref == 'refs/heads/test/vectorcraft-v014-keyboard-apk-20261024' || (github.event_name == 'pull_request' && github.event.pull_request.number == 51 && github.head_ref == 'test/vectorcraft-v014-keyboard-apk-20261024' && github.event.pull_request.head.repo.full_name == 'KosmosSG/artcraft-android'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      VERSION_NAME: '0.14.0-android.90'
+      TEST_VERSION_CODE: '16780890'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify test-only branch, keyboard features and regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            test "$GITHUB_HEAD_REF" = 'test/vectorcraft-v014-keyboard-apk-20261024'
+            test "$GITHUB_REF" = 'refs/pull/51/merge'
+          else
+            test "$GITHUB_REF" = 'refs/heads/test/vectorcraft-v014-keyboard-apk-20261024'
+          fi
+          test ! -e builder/keys/artcraft-builder.jks
+          python3 -m unittest discover -s tools/vectorcraft -p 'test_*.py' -v
+          test -s adapters/vectorcraft/src/android_modifiers.rs
+          test -s adapters/vectorcraft/src/lib.rs
+          test -s assets/branding/vectorcraft/vc-glass-approved.png
+      - uses: actions/checkout@v5
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+          path: builder
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: storytold/vectorcraft
+          ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+          path: builder/source/vectorcraft
+          persist-credentials: false
+      - name: Confirm source and builder provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C builder rev-parse HEAD)" = 'ac54d62d9d2d6f663295a4afd8972a7a3e79f9af'
+          test "$(git -C builder/source/vectorcraft rev-parse HEAD)" = 'ad0566943ab9741e6356bbc9b53c3cc09895068d'
+          python3 tools/vectorcraft/verify_upstream_tool_hotkeys.py builder/source/vectorcraft
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK / SDK build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'ndk;27.2.12479018' 'platforms;android-35' 'build-tools;35.0.0'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Stage the isolated keyboard-test adapter and approved icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e builder/keys/artcraft-builder.jks
+          rm -rf builder/adapters/vectorcraft
+          cp -a adapters/vectorcraft builder/adapters/vectorcraft
+          python3 tools/vectorcraft/keyboard_candidate.py stage builder
+          python3 tools/vectorcraft/keyboard_candidate.py verify builder
+          python3 tools/vectorcraft/adaptive_safe.py builder vectorcraft
+          python3 tools/vectorcraft/patch_android_menus.py builder
+          python3 tools/vectorcraft/prepare_builder.py builder "$VERSION_NAME" "$TEST_VERSION_CODE"
+          test ! -e builder/source/vectorcraft/apps/vectorcraft-android
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
+          python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/keyboard-test-vc.png"
+          python3 tools/vectorcraft/install_android_brand.py builder "$RUNNER_TEMP/keyboard-test-vc.png"
+      - name: Build ARM64 keyboard Test APK with disposable builder key
+        timeout-minutes: 135
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/vectorcraft/clean_launcher_icon.py assets/branding/vectorcraft/vc-glass-approved.png "$RUNNER_TEMP/keyboard-test-launcher.png"
+          bash builder/build.sh -vectorcraft "-appicon=$RUNNER_TEMP/keyboard-test-launcher.png"
+      - name: Compile Android keyboard regression tests before APK packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The full build copies the isolated adapter into the upstream app directory.
+          # Typecheck unit tests for the Android target even when they cannot run on the CI host.
+          cargo check --manifest-path builder/source/vectorcraft/apps/vectorcraft-android/Cargo.toml --tests --target aarch64-linux-android
+      - name: Verify actual APK identity, launcher, ARM64, disposable signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          test "$(find builder/output -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
+          cp "$(find builder/output -maxdepth 1 -name '*.apk' -print -quit)" candidate/VectorCraft-v014-KEYBOARD-TEST-ONLY.apk
+          APK='candidate/VectorCraft-v014-KEYBOARD-TEST-ONLY.apk'
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > candidate/badging.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, zipfile
+          badging = Path("candidate/badging.txt").read_text()
+          parsed = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
+          assert parsed, "Missing package metadata"
+          assert parsed.group(1) == "com.artcraft.vectorcraft.keyboardtest", "STOP: cannot overwrite production or other Test installs"
+          assert parsed.group(2) == "16780890", "Unexpected test version code"
+          assert parsed.group(3) == "0.14.0-android.90", "Unexpected test version name"
+          assert "launchable-activity: name='com.artcraft.vectorcraft.keyboardtest.VectorCraftActivity'" in badging, "Missing isolated launcher"
+          with zipfile.ZipFile("candidate/VectorCraft-v014-KEYBOARD-TEST-ONLY.apk") as apk:
+              names = apk.namelist()
+              assert any(n.startswith("lib/arm64-v8a/") and n.endswith(".so") for n in names), "ARM64 library missing"
+              assert any(n.endswith(".dex") for n in names), "Java Activity missing"
+          print("PASS: separate test package, version, launcher, ARM64 JNI and classes")
+          PY
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" > candidate/test-signature.txt
+          sha256sum "$APK" | tee candidate/SHA256SUMS.txt
+          printf 'Disposable-key TEST APK only. NEVER use as an in-place update or production release.\n' > candidate/README-TEST-ONLY.txt
+      - name: Upload test-only artifact to Actions (not GitHub Releases)
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: VectorCraft-v014-Keyboard-Test-ONLY
+          path: candidate/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Delete disposable builder signing files
+        if: always()
+        run: rm -rf builder/keys
