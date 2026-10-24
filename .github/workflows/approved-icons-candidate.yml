@@ -1,0 +1,111 @@
+name: DesignCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/designcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: designcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - uses: actions/checkout@v5
+      with:
+        repository: storytold/designcraft
+        ref: 5e8ef678321cfdd2d18927e2af94d58e5f9d8836
+        path: builder/source/designcraft
+        persist-credentials: false
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Validate menus, icon masks, launcher generation and update policy
+      shell: bash
+      run: "set -euo pipefail\npython3 -m pip install 'Pillow==11.3.0'\npython3 -m unittest discover -s tools/designcraft\
+        \ -p 'test_*.py' -v\npython3 tools/designcraft/prepare_builder.py builder 0.12.0-android.2 16800003\npython3 tools/designcraft/make_icon.py\
+        \ builder/dc-icon.png\npython3 tools/designcraft/stage_launcher.py builder\nmkdir -p \"$RUNNER_TEMP/designcraft-java\"\
+        \n# The complete private Gradle build compiles GameActivity and its AndroidX dependencies.\n# This fast host test\
+        \ exercises the pure release policy independently of Android.\njavac -source 17 -target 17 \\\n  -d \"$RUNNER_TEMP/designcraft-java\"\
+        \ \\\n  builder/source/designcraft/apps/designcraft-android/java/com/artcraft/designcraft/DesignCraftUpdatePolicy.java\
+        \ \\\n  tools/designcraft/DesignCraftUpdatePolicyTest.java\njava -cp \"$RUNNER_TEMP/designcraft-java\" com.artcraft.designcraft.DesignCraftUpdatePolicyTest\n"
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - name: Install Android ARM64 toolchain
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+
+        "$SDKMANAGER" --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        cargo install cargo-ndk --locked
+
+        '
+    - name: Build approved DesignCraft candidate
+      shell: bash
+      run: 'rm -rf builder/source/designcraft/apps/designcraft-android
+
+        set -euo pipefail
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install builder designcraft
+
+        bash builder/build.sh -designcraft -appicon="$GITHUB_WORKSPACE/builder/dc-icon.png"
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py builder approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: DesignCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: DesignCraft-approved-icons-diagnostics
+        path: builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf builder/keys

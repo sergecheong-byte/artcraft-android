@@ -1,0 +1,46 @@
+{
+  "filename": "DesignCraft.png",
+  "source_sha256": "895bb5d150465a63fd43631ae73aadb7f084e219da5031d6b1eb27232bee2bf0",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#43081F",
+  "letter_color": "#EC4869",
+  "glyph_source_bounds": [
+    315,
+    597,
+    1815,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    219,
+    127
+  ],
+  "app": "designcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "8f695e44651d8ea605f465e973535fbb4fe31ddcc72d81d0233b947faa89df95",
+    "res/mipmap-mdpi/ic_launcher_round.png": "8f695e44651d8ea605f465e973535fbb4fe31ddcc72d81d0233b947faa89df95",
+    "res/values/colors.xml": "71ca12609a8001310240acc17a816f202bfd4cf9324937451361962ff512ec87",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "ee2eaac886941add56623d20902afc32445a9eeeeefe2f11acb19ca53b0053ec",
+    "res/mipmap-xxhdpi/ic_launcher.png": "1fa30f4e8c6bbc83fa096a33862ff27b226b89c60e543348b6a7390ce03e3ed0",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "1fa30f4e8c6bbc83fa096a33862ff27b226b89c60e543348b6a7390ce03e3ed0",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "6daf7eb9c8844f637f0a0d6e3080093642179b23d1bb49bb100931973a2f9b9d",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "fd8923a77708bd89a9f82bebe141d9e960ae746974d8baf84215896fc0975181",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "097999e8e55f7ee289058da1e845110ed4259d60758768f47d4a702fbb527ee2",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "3e18071a97c1b808d4600ea6732fff82dea16efa87e2a1ec3dc0661e9136ba1e",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "601354bdf86dcea8c2f248cca3e85b30fb766ad2e0bd2ed8e763b4296084160a",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "601354bdf86dcea8c2f248cca3e85b30fb766ad2e0bd2ed8e763b4296084160a",
+    "res/mipmap-xhdpi/ic_launcher.png": "3c4b335d80c997b56cf561bf4cfc947d4ef6e66f40439c9406e67d3b2314c104",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "3c4b335d80c997b56cf561bf4cfc947d4ef6e66f40439c9406e67d3b2314c104",
+    "res/mipmap-hdpi/ic_launcher.png": "3a9e0fbaf2c4e73fed0b5d72e11bb45fb0c441cb6ca51d9560aac3fc5f1cbe97",
+    "res/mipmap-hdpi/ic_launcher_round.png": "3a9e0fbaf2c4e73fed0b5d72e11bb45fb0c441cb6ca51d9560aac3fc5f1cbe97"
+  },
+  "display_name": "DesignCraft",
+  "version_name": "0.12.0-android.3",
+  "version_code": 16800004,
+  "previous_version_code": 16800003,
+  "package": "com.artcraft.designcraft"
+}
