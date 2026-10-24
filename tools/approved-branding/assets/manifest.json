@@ -1,0 +1,46 @@
+{
+  "filename": "PhotoCraft.png",
+  "source_sha256": "199b7f028dd27f56a33b2f6028d523949818aae68ad37bae0882f420c54961df",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#011E36",
+  "letter_color": "#2CABFE",
+  "glyph_source_bounds": [
+    370,
+    597,
+    1759,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    215,
+    135
+  ],
+  "app": "photocraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "edc413140976b0d58004b445715dcced241dabe64e922f7159ed3666360b5c73",
+    "res/mipmap-mdpi/ic_launcher_round.png": "edc413140976b0d58004b445715dcced241dabe64e922f7159ed3666360b5c73",
+    "res/values/colors.xml": "9376db54b00ab40af4bc3f2347ec5a69badbdbef391e443edd36c4d08e27a1f9",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "346e42ae573176b8483e40c601198120fc3ed31cf6e419ef606dd9b5a1b45464",
+    "res/mipmap-xxhdpi/ic_launcher.png": "3346ee556b406b67cf66dd60278a372608916e6e5e9680e5ac2a081021bc7b90",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "3346ee556b406b67cf66dd60278a372608916e6e5e9680e5ac2a081021bc7b90",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "8687ba45f3a2b66ce9bd944c364f03fff572150f537f9d1442e31133fd33ae13",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "e213a1681d7da63abd979e2032662771a9aecd7a40936514f467ef7d3e744bb7",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "fbc36bfad25a9fcf281bf6e43cff5bb69dfa538afa4210fadd323a43fa2dbf04",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "c1e8593e7132d33d7d87b9c9d4a10e4adc650c93bed15bf234000a8c5636fafe",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "9447f83c39df2a08124e599d0bce9d0eaed229921bbb8e138d8e82e863df6896",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "9447f83c39df2a08124e599d0bce9d0eaed229921bbb8e138d8e82e863df6896",
+    "res/mipmap-xhdpi/ic_launcher.png": "802cae092ed9b4dfda1534efe5077c42f8c9748e334b5d7165fca9e0aa49450d",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "802cae092ed9b4dfda1534efe5077c42f8c9748e334b5d7165fca9e0aa49450d",
+    "res/mipmap-hdpi/ic_launcher.png": "e2e0f20bb4c946f068a9c3da434237e11591eeede459c52337b51d944a6147de",
+    "res/mipmap-hdpi/ic_launcher_round.png": "e2e0f20bb4c946f068a9c3da434237e11591eeede459c52337b51d944a6147de"
+  },
+  "display_name": "PhotoCraft",
+  "version_name": "0.12.0-android.2",
+  "version_code": 16790003,
+  "previous_version_code": 16790002,
+  "package": "com.artcraft.photocraft"
+}

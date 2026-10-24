@@ -1,0 +1,124 @@
+name: PhotoCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/photocraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: photocraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ARTCRAFT_PHOTOCRAFT_ANDROID_VERSION_NAME: 0.12.0-android.1
+      ARTCRAFT_TARGET_SDK: '35'
+      ARTCRAFT_BUILD_TOOLS_VERSION: 35.0.0
+      CARGO_BUILD_JOBS: '2'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Verify official pin, full features and safe Test app staging
+      run: 'set -euo pipefail
+
+        python3 tools/photocraft_v012_compat.py preflight
+
+        python3 -m unittest discover -s tools/tests -p ''test_photocraft_v012_candidate.py'' -v
+
+        '
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.95.0
+        targets: aarch64-linux-android
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Install Android 35 and ARM64 toolchain
+      run: 'set -euo pipefail
+
+        SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+
+        test -x "$SDKMANAGER"
+
+        "$SDKMANAGER" --install ''ndk;27.2.12479018'' ''platforms;android-35'' ''build-tools;35.0.0''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+        '
+    - name: Test updater policy and compile Java SAF Activity
+      run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/policy\"\njavac -d \"$RUNNER_TEMP/policy\" adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java\
+        \ tools/tests/PhotoCraftUpdatePolicyTest.java\njava -cp \"$RUNNER_TEMP/policy\" com.artcraft.photocraft.PhotoCraftUpdatePolicyTest\n\
+        javac -cp \"$ANDROID_HOME/platforms/android-35/android.jar\" -d \"$RUNNER_TEMP/policy\" \\\n  adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftUpdatePolicy.java\
+        \ \\\n  adapters/photocraft/java/com/artcraft/photocraft/PhotoCraftActivity.java\n"
+    - name: Rebase enhancements onto pinned upstream in disposable checkout
+      run: 'set -euo pipefail
+
+        python3 tools/photocraft_v012_compat.py checkout
+
+        python3 tools/photocraft_v012_compat.py prepare
+
+        python3 tools/photocraft_v012_compat.py verify
+
+        '
+    - name: Compile full ARM64 APK with temporary Test-only certificate
+      timeout-minutes: 130
+      run: 'set -euo pipefail
+
+        test ! -e keys/artcraft-builder.jks
+
+        python3 ./tools/approved-branding/install_packager.py
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install . photocraft
+
+        bash build.sh -photocraft
+
+        test "$(find output -maxdepth 1 -type f -name ''photocraft-*.apk'' | wc -l)" -eq 1
+
+        mkdir -p candidate
+
+        cp "$(find output -maxdepth 1 -type f -name ''photocraft-*.apk'' -print -quit)" candidate/PhotoCraft-0.12.0-android.1-ARM64-TEST-NOT-FOR-RELEASE.apk
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py . approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: PhotoCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: PhotoCraft-approved-icons-diagnostics
+        path: ./logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf ./keys
