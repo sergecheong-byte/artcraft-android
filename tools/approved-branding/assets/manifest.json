@@ -1,0 +1,46 @@
+{
+  "filename": "PDFCraft.png",
+  "source_sha256": "2b01cdde6777e12392d908924afd463b868adeac4658fea277d60453ebd0fe5d",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#FB0E00",
+  "letter_color": "#F7F7F7",
+  "glyph_source_bounds": [
+    371,
+    162,
+    1722,
+    1870
+  ],
+  "adaptive_foreground_size": [
+    157,
+    199
+  ],
+  "app": "pdfcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "6ed73188bf36bb9c25aec37e51f8241a7df134ae0c2c7933fe3e77f6d16cd975",
+    "res/mipmap-mdpi/ic_launcher_round.png": "6ed73188bf36bb9c25aec37e51f8241a7df134ae0c2c7933fe3e77f6d16cd975",
+    "res/values/colors.xml": "34f166b7b9cee95c2756b7c41199532026e455910abf094434eacca7f4d4b9fa",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "a9169fc15c16cc92813ecc1f16d5336bd093fb36849f0558c445305c7a681b60",
+    "res/mipmap-xxhdpi/ic_launcher.png": "e9c93bdf1e776ea81128953d5d06659fcccbe458f9b892ce4a1353066d69b56c",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "e9c93bdf1e776ea81128953d5d06659fcccbe458f9b892ce4a1353066d69b56c",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "93b4fa6f63793efef05ed17dd8bd3c51d9f020a9676d0da1aa0f6a10ef5ffdd2",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "38e70929aff14d29a87e9adb0a05f5885d0c65a81d80730898fbff550b6eb8d5",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "541f246dee7d9d5d5726516b2d2346af85d2abaaaa24d594c1ef495bb77c2b22",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "b1604a152445dfbaee4a3d1e38976054bf7975059c5e122930b1d724fb62bce5",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "61bd31a48beec40b3787709fd95700b1ed2201b71f7e4418dc47ac7858e57ee1",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "61bd31a48beec40b3787709fd95700b1ed2201b71f7e4418dc47ac7858e57ee1",
+    "res/mipmap-xhdpi/ic_launcher.png": "8bb679e845bb6491e975eb08d8398100c1a04521ba9d38cfcca62b8c4d65f32e",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "8bb679e845bb6491e975eb08d8398100c1a04521ba9d38cfcca62b8c4d65f32e",
+    "res/mipmap-hdpi/ic_launcher.png": "142922d056fc2c4bc8e0789c65f005d98d9d530b63b79b72a3043ba43c1f29cb",
+    "res/mipmap-hdpi/ic_launcher_round.png": "142922d056fc2c4bc8e0789c65f005d98d9d530b63b79b72a3043ba43c1f29cb"
+  },
+  "display_name": "PDFCraft",
+  "version_name": "0.12.1-android.3",
+  "version_code": 16780291,
+  "previous_version_code": 16780290,
+  "package": "com.artcraft.pdfcraft"
+}

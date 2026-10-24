@@ -1,0 +1,175 @@
+name: PDFCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/pdfcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: pdfcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PDFCRAFT_ANDROID_VERSION_NAME: 0.12.1-android.2
+      PDFCRAFT_REF: v0.12.0
+      PDFCRAFT_SHA: 39844f06b58bc96bae72d3fb56faaa3b6201c945
+      PDFCRAFT_ICON_SHA256: acb206f5bb7759a38e604d0d1295753dd08a67fd9d38b19d27f86d8e737c2085
+      EXPECTED_EPHEMERAL_VERSION_CODE: '16780290'
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - name: Checkout isolated candidate only
+      uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Verify the exact stable upstream release tag and commit
+      shell: bash
+      run: 'set -euo pipefail
+
+        REMOTE="https://github.com/storytold/pdfcraft.git"
+
+        ACTUAL="$(git ls-remote --tags "$REMOTE" "refs/tags/$PDFCRAFT_REF" | awk ''NR == 1 {print $1}'')"
+
+        test "$ACTUAL" = "$PDFCRAFT_SHA" || { echo "::error::Official PDFCraft tag changed, missing, or not verified"; exit
+        1; }
+
+        git clone --depth 1 --branch "$PDFCRAFT_REF" "$REMOTE" source/pdfcraft
+
+        test "$(git -C source/pdfcraft rev-parse HEAD)" = "$PDFCRAFT_SHA"
+
+        test "$(git -C source/pdfcraft remote get-url origin)" = "$REMOTE"
+
+        echo "Official PDFCraft $PDFCRAFT_REF resolves to $PDFCRAFT_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+        '
+    - name: Test guarded Android adapter generation
+      run: python3 tools/test_pdfcraft_adapter.py source/pdfcraft
+    - name: Prepare owner-supplied red PdfC with clean launcher transparency
+      shell: bash
+      run: "set -euo pipefail\necho \"$PDFCRAFT_ICON_SHA256  assets/pdfcraft/approved-icon.webp\" | sha256sum --check\nif\
+        \ ! command -v convert >/dev/null 2>&1; then\n  sudo apt-get update -q\n  sudo apt-get install -y imagemagick\nfi\n\
+        # Owner-supplied PdfC red glass artwork; external black matte was made transparent.\n# The original PdfC lettering\
+        \ is retained; solid red adaptive background replaces the dark halo.\nconvert assets/pdfcraft/approved-icon.webp -resize\
+        \ 512x512 assets/pdfcraft/approved-icon.png\nconvert assets/pdfcraft/approved-icon.webp -resize 278x278 \\\n  -background\
+        \ none -gravity center -extent 432x432 \\\n  assets/pdfcraft/approved-foreground.png\nidentify assets/pdfcraft/approved-icon.png\
+        \ assets/pdfcraft/approved-foreground.png\n"
+    - name: Set up Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Set up Rust (upstream requires 1.95 or newer)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android
+    - name: Test PhotoCraft-derived keyboard fix and PDF object read/write code
+      shell: bash
+      run: 'set -euo pipefail
+
+        mkdir -p "$RUNNER_TEMP/pdfcraft-input-tests/src"
+
+        cp templates/android/pdfcraft_modifiers.rs "$RUNNER_TEMP/pdfcraft-input-tests/src/lib.rs"
+
+        cat > "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml" <<''EOF''
+
+        [package]
+
+        name = "pdfcraft-input-tests"
+
+        version = "0.1.0"
+
+        edition = "2024"
+
+        [dependencies]
+
+        egui = "=0.36.0"
+
+        EOF
+
+        cargo test --manifest-path "$RUNNER_TEMP/pdfcraft-input-tests/Cargo.toml"
+
+        cargo test --manifest-path source/pdfcraft/Cargo.toml -p pdfcraft-cos --lib -j 2
+
+        '
+    - name: Configure Android SDK/NDK
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+        SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -maxdepth 3 -name sdkmanager -type f -print -quit)"
+
+        test -n "$SDKMANAGER"
+
+        echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+        "$SDKMANAGER" --install "ndk;27.2.12479018" "platforms;android-35"
+
+        echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Compile PDFCraft candidate with disposable builder key
+      shell: bash
+      run: 'set -euo pipefail
+
+        # WARNING: build-common.sh generates a transient builder keystore on this runner.
+
+        # This is never a PDFCraft permanent signing identity.
+
+        test ! -f keys/artcraft-builder.jks
+
+        python3 ./tools/approved-branding/install_packager.py
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install . pdfcraft
+
+        bash build.sh -pdfcraft -appname=PdfCraft -appicon=assets/pdfcraft/approved-icon.png
+
+        test -f output/pdfcraft-0.12.0.apk
+
+        mv output/pdfcraft-0.12.0.apk output/pdfcraft-0.12.1-android.2.apk
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py . approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: PDFCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: PDFCraft-approved-icons-diagnostics
+        path: ./logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf ./keys
