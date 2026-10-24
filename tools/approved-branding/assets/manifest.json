@@ -1,0 +1,46 @@
+{
+  "filename": "VectorCraft.png",
+  "source_sha256": "07eed59ba0564ebcc199004248469d5a0f663340e0a46843552ca7261ce0892f",
+  "source_size": [
+    2048,
+    2048
+  ],
+  "bg_color": "#2D0000",
+  "letter_color": "#FD9A00",
+  "glyph_source_bounds": [
+    285,
+    597,
+    1750,
+    1468
+  ],
+  "adaptive_foreground_size": [
+    218,
+    130
+  ],
+  "app": "vectorcraft",
+  "resources": {
+    "res/mipmap-mdpi/ic_launcher.png": "388e5256adb88826054ac2c3f8185fcaea6a8a63e3e5fdd86bc58d7a12e9066e",
+    "res/mipmap-mdpi/ic_launcher_round.png": "388e5256adb88826054ac2c3f8185fcaea6a8a63e3e5fdd86bc58d7a12e9066e",
+    "res/values/colors.xml": "fec0f883b91f25ff59d180c29a37281d018ef38888147a86ac562cf16e9164aa",
+    "res/drawable-xxxhdpi/ic_launcher_foreground.png": "1de7b768d866c6f131dee3c672ddfdfbe27e2a3d895c90f092bac9519662decd",
+    "res/mipmap-xxhdpi/ic_launcher.png": "aa18b2aa210805c31752367ee358852cdc6af43c3373280fc5d3be23e4d73ffd",
+    "res/mipmap-xxhdpi/ic_launcher_round.png": "aa18b2aa210805c31752367ee358852cdc6af43c3373280fc5d3be23e4d73ffd",
+    "res/mipmap-anydpi-v26/ic_launcher_round.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/mipmap-anydpi-v26/ic_launcher.xml": "85ecf5eae89769890b0c3ed2d70405471075b924b8bb22c80896804ae1805df8",
+    "res/drawable-nodpi/ic_inapp_brand_64.png": "098781f2d32b0623c4a5f72f154acf82b6efc80a9208f0c5f26b754c1032c182",
+    "res/drawable-nodpi/ic_inapp_symbol_64.png": "765185a871dda2b3e0ef33e0dda9276637fdc466b1a946f5e0ce766e3ba625a2",
+    "res/drawable-nodpi/ic_inapp_brand_128.png": "65c76fb17de6a32df1f9538f512fb21516926f9f9fce56bca13ec4389b887646",
+    "res/drawable-nodpi/ic_inapp_symbol_128.png": "63c30ffe6e7383ebc8a53f3a0f1612070181affa7d8962fde72fe994be5adc92",
+    "res/mipmap-xxxhdpi/ic_launcher.png": "292353f156180ed1690a883804d9231b4c7abae6f1c69f8d3eb0908ea7132371",
+    "res/mipmap-xxxhdpi/ic_launcher_round.png": "292353f156180ed1690a883804d9231b4c7abae6f1c69f8d3eb0908ea7132371",
+    "res/mipmap-xhdpi/ic_launcher.png": "8b2c9db5b653f8de271a7d1eebf3694cac432bf53a0bf3207975351cb6ec97b2",
+    "res/mipmap-xhdpi/ic_launcher_round.png": "8b2c9db5b653f8de271a7d1eebf3694cac432bf53a0bf3207975351cb6ec97b2",
+    "res/mipmap-hdpi/ic_launcher.png": "d1566466fe098bf0319de7d9c4ffe242a2e6bc7fe7513ef37dfef7029ed303c8",
+    "res/mipmap-hdpi/ic_launcher_round.png": "d1566466fe098bf0319de7d9c4ffe242a2e6bc7fe7513ef37dfef7029ed303c8"
+  },
+  "display_name": "VectorCraft",
+  "version_name": "0.14.0-android.8",
+  "version_code": 16780808,
+  "previous_version_code": 16780805,
+  "package": "com.artcraft.vectorcraft"
+}

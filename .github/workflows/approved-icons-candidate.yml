@@ -1,0 +1,143 @@
+name: VectorCraft approved icons ARM64 candidate (never publish)
+'on':
+  push:
+    branches:
+    - icons/vectorcraft-approved-20261024
+    paths:
+    - tools/approved-branding/**
+    - .github/workflows/approved-icons-candidate.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: vectorcraft-approved-icons-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      BUILDER_SHA: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+      SOURCE_SHA: ad0566943ab9741e6356bbc9b53c3cc09895068d
+      SOURCE_TAG: v0.14.0
+      VERSION_NAME: 0.14.0-android.8
+      VERSION_CODE: '16780808'
+      PREVIOUS_CODE: '16780805'
+      CARGO_BUILD_JOBS: '2'
+      ARTCRAFT_TARGET_SDK: '35'
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        persist-credentials: false
+    - name: Verify approved source, adaptive safe area and monotonic version
+      run: 'python3 -m pip install Pillow==11.3.0
+
+        python3 -m unittest discover -s tools/approved-branding -p "test_*.py" -v
+
+        '
+    - name: Verify exact approved launcher icon before expensive builds
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 tools/vectorcraft/verify_approved_icon.py assets/branding/vectorcraft/vc-glass-approved.png
+
+        '
+    - name: Validate reserved version code
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY'\nimport os, re\nnew, old = os.environ['VERSION_CODE'], os.environ['PREVIOUS_CODE']\n\
+        if not re.fullmatch(r'[1-9][0-9]*', new) or not re.fullmatch(r'0|[1-9][0-9]*', old):\n    raise SystemExit('Version\
+        \ codes must be decimal integers')\nif not 0 <= int(old) < int(new) <= 2100000000:\n    raise SystemExit('Reserved\
+        \ versionCode must exceed the previous verified code')\nPY\n"
+    - uses: actions/checkout@v5
+      with:
+        repository: MostafaXS1/artcraft-android
+        ref: ac54d62d9d2d6f663295a4afd8972a7a3e79f9af
+        path: builder
+        persist-credentials: false
+    - uses: actions/checkout@v5
+      with:
+        repository: storytold/vectorcraft
+        ref: ad0566943ab9741e6356bbc9b53c3cc09895068d
+        fetch-depth: 1
+        path: builder/source/vectorcraft
+        persist-credentials: false
+    - name: Verify official release provenance and apply Android version metadata
+      shell: bash
+      run: "set -euo pipefail\ntest \"$(git -C builder rev-parse HEAD)\" = \"$BUILDER_SHA\"\ntest \"$(git -C builder/source/vectorcraft\
+        \ rev-parse HEAD)\" = \"$SOURCE_SHA\"\ngit -C builder/source/vectorcraft fetch --depth=1 origin \"refs/tags/$SOURCE_TAG:refs/tags/$SOURCE_TAG\"\
+        \ntest \"$(git -C builder/source/vectorcraft rev-parse \"$SOURCE_TAG^{commit}\")\" = \"$SOURCE_SHA\"\n# The pinned\
+        \ reference is a reviewed toolchain only. Ship this branch's\n# independently reviewed VectorCraft adapter, never\
+        \ the reference's older shell.\ntest -s adapters/vectorcraft/src/lib.rs\ntest -s adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java\n\
+        rm -rf builder/adapters/vectorcraft\ncp -a adapters/vectorcraft builder/adapters/vectorcraft\ncmp adapters/vectorcraft/src/lib.rs\
+        \ builder/adapters/vectorcraft/src/lib.rs\ncmp adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java\
+        \ \\\n    builder/adapters/vectorcraft/java/com/artcraft/vectorcraft/VectorCraftExtras.java\npython3 tools/vectorcraft/adaptive_safe.py\
+        \ builder vectorcraft\npython3 tools/vectorcraft/patch_android_menus.py builder\npython3 tools/vectorcraft/prepare_builder.py\
+        \ builder \"$VERSION_NAME\" \"$VERSION_CODE\"\n"
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android
+    - name: Install NDK
+      shell: bash
+      run: 'set -euo pipefail
+
+        SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)
+
+        "$SDKMANAGER" --install ''ndk;27.2.12479018''
+
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+        '
+    - name: Build VectorCraft candidate with approved Vc icon and disposable local key
+      shell: bash
+      run: 'set -euo pipefail
+
+        ORIGINAL="$GITHUB_WORKSPACE/assets/branding/vectorcraft/vc-glass-approved.png"
+
+        test -s "$ORIGINAL"
+
+        python3 tools/vectorcraft/verify_approved_icon.py "$ORIGINAL"
+
+        # Do not change the approved source: only use a border-free derivative
+
+        # for Android''s adaptive launcher, like the released PhotoCraft icon.
+
+        ICON="$GITHUB_WORKSPACE/vectorcraft-vc-no-border.png"
+
+        python3 tools/vectorcraft/clean_launcher_icon.py "$ORIGINAL" "$ICON"
+
+        python3 -m pip install Pillow==11.3.0
+
+        python3 ./tools/approved-branding/approved_branding.py install builder vectorcraft
+
+        bash builder/build.sh -vectorcraft "-appicon=$ICON"
+
+        '
+    - name: Verify compiled APK artwork and retain candidate evidence
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 ./tools/approved-branding/verify_apk.py builder approved-icon-candidate
+
+        '
+    - name: Retain APK and verification evidence (no release)
+      uses: actions/upload-artifact@v5
+      with:
+        name: VectorCraft-approved-icons-candidate
+        path: approved-icon-candidate/
+        retention-days: 30
+        if-no-files-found: error
+    - name: Retain build diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v5
+      with:
+        name: VectorCraft-approved-icons-diagnostics
+        path: builder/logs/
+        retention-days: 7
+        if-no-files-found: warn
+    - name: Remove transient local builder key
+      if: always()
+      run: rm -rf builder/keys
